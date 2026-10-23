@@ -20,7 +20,8 @@ function localSupabase(): { url: string; anonKey: string } | null {
 
 const supabase = localSupabase();
 const chrome = {
-  channel: 'chrome',
+  // macOS: the installed Chrome (no download). Linux/CI: Playwright's bundled Chromium.
+  ...(process.platform === 'darwin' && { channel: 'chrome' }),
   viewport: { width: 1280, height: 800 },
   launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
 };

@@ -22,7 +22,7 @@ jobs:
       - run: pnpm test
 
   # Server rules and multi-device sync against a real local Supabase, plus the app's e2e flows.
-  # Screenshot tests (@visual) are skipped here: their baselines are recorded on macOS.
+  # Screenshot tests (@visual) run in the "visual" job instead.
   integration:
     runs-on: ubuntu-latest
     needs: check
@@ -41,4 +41,26 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results
+          path: apps/web/test-results
+
+  # Screenshot tests against the *-linux.png baselines, in the image scripts/linux-baselines.sh records them with.
+  visual:
+    runs-on: ubuntu-latest
+    needs: check
+    container: mcr.microsoft.com/playwright:v1.56.1-noble
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @coffee/web exec playwright test --project=local --grep @visual --retries=0
+        env:
+          HOME: /root
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diffs
           path: apps/web/test-results
