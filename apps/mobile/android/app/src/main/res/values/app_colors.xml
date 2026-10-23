@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same as capacitor.config backgroundColor: shows behind the system bars when the WebView is inset. -->
+    <color name="app_background">#141226</color>
+</resources>

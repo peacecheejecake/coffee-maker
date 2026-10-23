@@ -103,6 +103,7 @@ PUSH_E2E=1 PUSH_TLS_DIR=/tmp/pushtls NOTIFY_SECRET=$(grep ^NOTIFY_SECRET= supaba
 pnpm --filter @coffee/mobile sync     # 웹 빌드 + 네이티브 프로젝트 동기화
 pnpm --filter @coffee/mobile ios      # Xcode 열기 (iOS, SPM)
 pnpm --filter @coffee/mobile android  # Android Studio 열기 (Android SDK 필요)
+(cd apps/mobile/android && ./gradlew assembleDebug)  # 명령줄 빌드: JDK 21, ANDROID_HOME
 node scripts/render-native-assets.mjs # 앱 아이콘·스플래시 재생성
 ```
 

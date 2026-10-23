@@ -609,8 +609,9 @@ seq(
 > - **네이티브 푸시**: `@capacitor/push-notifications`로 APNs/FCM 토큰 등록 → `native_push_tokens`(본인 행, RPC로 저장) → `notify`가 플랫폼별 발송(APNs ES256 provider token, FCM HTTP v1 서비스 계정). 죽은 토큰 정리. iOS: AppDelegate 등록 콜백 + `aps-environment` entitlement, 시뮬레이터 빌드 확인.
 > - **Universal Links / App Links**: `scripts/configure-app-links.mjs --domain --team --android-sha256`가 `.well-known` 두 파일, iOS Associated Domains, Android `autoVerify` intent filter를 생성(재실행 시 교체, 단위 테스트).
 >
+> - **Android 빌드/실행**: JDK 21 + SDK 36(라이선스는 사용자 승인 후 동의)으로 `assembleDebug` 성공, 에뮬레이터(Android 36, arm64)에서 딥링크 `coffeemaker://demo`로 3D 씬·저승사자·업보 청구 시트 확인. WebView < 140에서 시스템 바 영역이 흰색으로 보이던 문제 → 창 배경을 앱 배경색으로.
+>
 > 남은 일 (사용자 계정·승인 필요):
-> - **Android 빌드/실행**: Android SDK 설치에 라이선스 동의가 필요 — 사용자 승인 후 진행. 프로젝트·매니페스트·아이콘은 준비됨.
 > - **실제 푸시 키**: Apple Developer APNs 키(.p8)·Team ID, Firebase 프로젝트(`google-services.json`, 서비스 계정).
 > - **도메인**: 정해지면 `configure-app-links.mjs` 실행 후 배포.
 > - 스토어 제출물(스크린샷·개인정보 처리방침·서명).
