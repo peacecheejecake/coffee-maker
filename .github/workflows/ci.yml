@@ -36,6 +36,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta
       - run: pnpm test:int
+      # On Linux the tests use Playwright's bundled Chromium (see playwright.config.ts).
+      - run: pnpm --filter @coffee/web exec playwright install --with-deps chromium
       - run: pnpm --filter @coffee/web e2e:ci
       - if: failure()
         uses: actions/upload-artifact@v4
