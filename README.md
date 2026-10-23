@@ -95,7 +95,18 @@ pnpm supabase stop && pnpm supabase:start      # .env.local이 있으면 edge ru
 PUSH_E2E=1 PUSH_TLS_DIR=/tmp/pushtls NOTIFY_SECRET=$(grep ^NOTIFY_SECRET= supabase/functions/.env.local | cut -d= -f2) pnpm test:int
 ```
 
-실서비스: Supabase 프로젝트를 만든 뒤 `pnpm supabase link --project-ref <ref>` → `pnpm supabase db push`, 호스팅 환경에 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` 설정. 대시보드에서 Anonymous sign-ins를 켜야 합니다.
+### 웹 배포 (Supabase + Vercel)
+
+```sh
+pnpm supabase login && npx vercel@65.2.0 login
+pnpm supabase link --project-ref <ref>    # 대시보드에서 만든 프로젝트
+pnpm supabase db push
+# 대시보드: Authentication → Anonymous sign-ins 켜기, Site URL/Redirect URLs에 Vercel 주소 추가
+# apps/web/.env.production.local 에 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (선택: VITE_VAPID_PUBLIC_KEY)
+pnpm deploy:web                           # 로컬에서 빌드해 Vercel에 prebuilt 정적 사이트로 배포(--prod)
+```
+
+웹 푸시까지 쓰려면 위 "알림"의 함수 배포·시크릿·`notify_config`도 실행합니다.
 
 ### 네이티브 앱 (Capacitor)
 
