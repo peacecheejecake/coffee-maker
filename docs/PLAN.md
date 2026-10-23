@@ -1,13 +1,14 @@
-# 구현 계획 (v0.1)
+# 구현 계획 (v0.2)
 
 > `DESIGN.md` v0.2의 마일스톤(M0–M7)을 작업 단위로 구체화한 문서.
 > 각 마일스톤: **목표 → 산출물 → 작업 목록 → 핵심 설계 디테일 → 테스트 → 완료 기준 → 리스크**.
 
-## 0. 전제 (DESIGN.md §7 미결 사항 — 기본안으로 진행, 바뀌면 이 표만 갱신)
+## 0. 확정 사항 (DESIGN.md v0.3 "확정된 결정"과 동일)
 
-| 항목 | 적용한 기본안 | 영향 범위 |
+| 항목 | 결정 | 영향 범위 |
 |---|---|---|
-| 권한 | 멤버 누구나 기록·정정 / 규정 변경·탕감은 owner | M0 `decide`, M3 RLS |
+| 권한 | 멤버 누구나 기록·정정·탕감 발의 / 규정 변경은 owner | M0 `decide`, M3 RLS |
+| 탕감 | **투표로 결정, 만장일치** (채무자 제외 전원 찬성, 반대 1표 즉시 부결, 72h 만료). 오기록은 기록자 본인 10분 내 철회 | M0, M2, M3 RLS, M4 |
 | 수령 확인 | 상환 즉시 반영, 확인은 도장 진하게(장식) | M0 projection, M5 |
 | 앱 이름 | 표시명 "저승 커피 채권관리공사", 코드명 `coffee-maker` | theme 리소스만 |
 | 저승사자 | 자체 캐릭터 (커피 요소 가미), M1–M5는 프리미티브 조합 | M6 에셋 |
@@ -63,7 +64,10 @@ isLate      = minutesLate > graceMinutes
 type Command =
   | { type: 'RecordArrival'; playerId; workDate; arrivedAt; scheduledStart?; cupsOverride?; note? }
   | { type: 'CorrectLate'; targetId; changes; reason? }
-  | { type: 'WaiveLate'; targetId; reason }
+  | { type: 'RetractLate'; targetId }                       // 기록자 본인, 10분 이내
+  | { type: 'ProposeWaive'; targetId; reason }
+  | { type: 'VoteWaive'; proposalId; vote: 'approve' | 'reject' }
+  | { type: 'WithdrawWaive'; proposalId }
   | { type: 'Redeem'; debtorId; payerId; count; recipients; order; stampQuality; evidence? }
   | { type: 'AcknowledgeRedemption'; redemptionId }
   | { type: 'ChangeRuleset'; ruleset }
@@ -73,13 +77,20 @@ decide(cmd, state, ctx: { actorId, now, newId }) => Result<LedgerEvent[], Domain
 evolve(state, event) => state
 ```
 - `RecordArrival`이 정시면 이벤트 없이 `{ ok: true, events: [], outcome: 'on-time' }` 반환 (UI가 "정시 출근 ✅" 표시)
-- `DomainError` 종류: `DuplicateWorkDate`(경고용, 강제 진행 플래그 허용), `TargetNotFound`, `AlreadyWaived`, `NotPermitted`, `InvalidRuleset`, `NothingToRedeem`
+- `DomainError` 종류: `DuplicateWorkDate`(경고용, 강제 진행 플래그 허용), `TargetNotFound`, `AlreadyWaived`, `NotPermitted`, `InvalidRuleset`, `NothingToRedeem`, `RetractWindowClosed`, `CorrectionToZero`(→ 탕감 발의 유도), `ProposalAlreadyOpen`, `NotAVoter`, `AlreadyVoted`, `ProposalClosed`, `NoEligibleVoters`, `ReasonRequired`
+- `ProposeWaive`의 decide는 투표권자 스냅샷(`활성 멤버 − 채무자`), `policy`, `expiresAt = now + ttl`을 계산해 이벤트에 고정. 발의자가 채무자가 아니면 `WaiveVoted(approve)`를 함께 생성
+- `CorrectLate`에서 결과 잔 수가 0이 되면 `CorrectionToZero` 에러 (도착 시각 정정으로 정시가 되는 경우 포함)
 - 권한 검사(`NotPermitted`)도 decide에서 → 서버 RLS와 이중 방어
 
 **3) Projection 규칙**
 - 컵 ID: `${sourceEventId}#${n}` (결정론적 → 모든 기기 동일)
 - `LateCorrected`: 대상의 `resultingCups`와 현재 살아있는 컵 수 차이만큼 추가(위에 쌓음)/제거(해당 source 컵 중 위쪽부터)
-- `LateWaived`: 해당 source 컵 전부 제거. **이미 상환된 컵은 되돌리지 않음** (상환은 사실이므로) — 대신 `stats.overpaid` 증가
+- `LateRetracted` / 탕감 가결: 해당 source 컵 전부 제거. **이미 상환된 컵은 되돌리지 않음** (상환은 사실이므로) — 대신 `stats.overpaid` 증가
+- 탕감 심의: `proposals: Map<proposalId, { targetId, voters, votes, policy, expiresAt, status }>`
+  - `WaiveVoted` 적용 시 `tallyWaive()` → `approved`면 그 자리에서 컵 제거, `rejected`면 종료
+  - 투표 유효성(투표권자 여부, 중복, 기한 `at > expiresAt`, 종료된 안건)은 evolve에서도 재검사해 **무효 표는 무시** → 동기화로 뒤늦게 온 표에도 안전
+  - 같은 대상에 열린 심의가 이미 있으면 뒤의 발의는 무시
+  - `expired`는 `now`가 필요하므로 projection이 아니라 selector(`proposalStatus(p, now)`)에서 판정
 - `CupsRedeemed`: `order`에 따라 위/아래부터 `count`개 제거, 부족하면 남은 만큼만(클램프) + `overpaid` 기록
 - `RulesetChanged`: `rulesetHistory`에 `effectiveFrom`과 함께 push. `rulesetAt(date)`는 이진 탐색
 - 정정 시 재계산은 **원래 `workDate`에 유효했던 규정** 사용 (`decide`에서 계산해 `resultingCups`로 저장 → evolve는 계산하지 않음 = 재현성)
@@ -91,13 +102,23 @@ evolve(state, event) => state
 ### 테스트
 - **판정 테이블 테스트**: 위 경계값 + 구간 경계(15/16분) + override
 - **시나리오 테스트** (`given(events).when(cmd).then(events | error)` 헬퍼):
-  1. 청구 → 정정(잔 수 증가) → 정정(감소) → 탕감
+  1. 청구 → 정정(잔 수 증가) → 정정(감소) → 정정으로 0잔 시도 → `CorrectionToZero`
   2. 3잔 누적 → 1잔 상환(LIFO) → 묵은 업보부터 1잔 상환
   3. 대납: payer ≠ debtor
   4. 규정 변경 후 이전 날짜 정정 시 구 규정 적용 (비소급)
-  5. 상환 후 원본 탕감 → overpaid
+  5. 상환 후 원본 탕감 가결 → overpaid
   6. 중복 workDate 경고
-- **속성 테스트** (fast-check): 임의 이벤트열에 대해 `컵 수 ≥ 0`, `컵 수 = 청구 - 상환 - 탕감 + 정정Δ (클램프 고려)`, `project(events) == events.reduce(evolve)`, 이벤트 순서가 같으면 결과 동일
+  7. 철회: 본인 10분 내 성공 / 11분 후 `RetractWindowClosed` / 타인 `NotPermitted`
+  8. 탕감 심의 (4인 그룹: A 채무자, B 발의):
+     - B 발의(자동 찬성) → C 찬성 → D 찬성 → **가결, 컵 제거**
+     - B 발의 → C 반대 → **즉시 부결**, 이후 D 투표는 `ProposalClosed`
+     - A 본인 발의 → 투표권자 B·C·D, A는 `NotAVoter`
+     - 발의 후 E 합류 → E는 `NotAVoter`
+     - 기한 후 투표 무시, selector가 `expired` 반환
+     - 열린 심의 있는 기록에 재발의 → `ProposalAlreadyOpen`, 부결 후 재발의는 허용
+     - 철회(Withdraw) 후 투표 → `ProposalClosed`
+     - 혼자인 그룹 → `NoEligibleVoters`
+- **속성 테스트** (fast-check): 임의 이벤트열에 대해 `컵 수 ≥ 0`, `컵 수 = 청구 - 상환 - 탕감 + 정정Δ (클램프 고려)`, `project(events) == events.reduce(evolve)`, 이벤트 순서가 같으면 결과 동일, **가결된 심의는 투표권자 전원의 approve가 있을 때만 존재**, 한 기록에 동시에 열린 심의 ≤ 1
 
 ### 완료 기준
 - 위 시나리오·속성 테스트 통과, 커버리지 95%+
@@ -184,16 +205,18 @@ interface TowerViewModel {
 
 ### 작업 목록
 - [ ] `app/store.ts` — zustand: `{ events, state, pending, sceneModel }`, `dispatch(command)`
-- [ ] `app/usecases/` — `recordArrival`, `correctLate`, `waiveLate`, `changeRuleset`, `managePlayers`, `undo`
+- [ ] `app/usecases/` — `recordArrival`, `correctLate`, `retractLate`, `proposeWaive`, `voteWaive`, `withdrawWaive`, `changeRuleset`, `managePlayers`, `undo`
 - [ ] `app/clock.ts` — 그룹 tz 기준 `now → { workDate, hhmm }` (`Intl.DateTimeFormat` 사용, 외부 라이브러리 X)
 - [ ] `adapters/local-idb` — Dexie 스키마: `events(id, seq?, groupId, at)`, `outbox(id)`, `meta(key)`
 - [ ] `ui/primitives` — Radix UI 기반 Sheet(모바일 bottom / 데스크톱 side), Stepper, TimeWheel, Toast
 - [ ] `ui/record/QuickRecordSheet` — 플레이어 선택 → 시각 → 미리보기 → 청구
 - [ ] `ui/record/AdvancedFields` — 날짜, 기준 시각, 잔 수 override, 메모
-- [ ] `ui/ledger/LedgerSheet` — 플레이어별 명세서: 기록 리스트, 정정 배지, 변경 이력 diff, 정정/탕감 액션
+- [ ] `ui/ledger/LedgerSheet` — 플레이어별 명세서: 기록 리스트, 정정 배지, 변경 이력 diff, 정정/철회/탕감 발의 액션
+- [ ] `ui/waive/` — 발의 폼(사유 필수), **심의함**(HUD 배지 + 투표 카드: 대상·사유·찬성 현황 ●●○○·남은 시간·[찬성]/[반대] + 반대 시 확인 다이얼로그), 종료된 심의 기록 열람
+- [ ] 설정의 "탕감 가결 방식" 항목 — 지금은 "만장일치 / 기한 72시간" 표시 + 기한만 조정 가능(24–168h)
 - [ ] `ui/settings/` — 공사 규정(유예, 잔 수 방식, 구간 편집기, 기준 시각), 플레이어 관리(추가/수정/보관, 개별 기준 시각)
 - [ ] `theme/underworld/ko.ts` + `theme/plain/ko.ts` — 타입 안전 문구 사전 (`t('record.cta')`)
-- [ ] Undo 토스트: 기록 직후 5초간 [되돌리기]
+- [ ] Undo 토스트: 기록 직후 5초간 [되돌리기] (= 철회), 이후 10분까진 명세서에서 [철회] 버튼 노출
 
 ### 핵심 설계 디테일
 
@@ -216,8 +239,13 @@ idle → pickPlayer → pickTime(default=now) → preview(judge 결과 실시간
 - 변경사항 미리보기: "09:20 도착 시 → 현재 1잔 / 변경 후 2잔"
 
 **4) Undo**
-- `undo`는 직전 *내* 이벤트 유형별 보상 커맨드 생성: `LateRecorded → LateWaived(reason:'undo')`, `CupsRedeemed → (M5) RedemptionReverted` 등
+- `undo`는 직전 *내* 이벤트 유형별 보상 커맨드 생성: `LateRecorded → RetractLate`(10분 내), `CupsRedeemed → (M5) RedemptionReverted`, `ProposeWaive → WithdrawWaive` 등. 투표는 undo 불가
 - 원격 동기화 이후에도 일관됨 (삭제가 아니라 추가이므로)
+
+**5) 탕감 심의 UX**
+- 정정에서 0잔(정시 판정 포함)이 되면 저장 버튼이 **[탕감 심의로 발의]**로 바뀌고 사유 입력으로 이어짐
+- 투표 카드에서 반대는 한 표로 즉시 부결되므로 "반대하면 바로 기각됩니다" 확인 다이얼로그
+- M2(로컬 단독)에서는 한 기기에서 투표자를 전환하며 테스트 (`/sandbox`의 "현재 사용자" 스위처), 실제 다인 투표는 M3에서 완성
 
 ### 테스트
 - usecase 단위 테스트 (메모리 어댑터)
@@ -263,7 +291,11 @@ create index on events (group_id, seq);
 ```
 **RLS**
 - `events` SELECT: 해당 그룹 멤버만
-- `events` INSERT: 멤버이고 `actor_id = 내 player_id`. `RulesetChanged`, `LateWaived`는 owner만 (탕감 중 `reason='undo'`이고 자신의 이벤트 대상이면 허용 → RPC로 처리)
+- `events` INSERT: 멤버이고 `actor_id = 내 player_id`. 유형별 추가 조건:
+  - `RulesetChanged`: owner만
+  - `LateRetracted`: 대상 `LateRecorded`의 `actor_id`가 본인이고 `now() - 대상.server_at ≤ 10분`
+  - `WaiveVoted`: 본인이 해당 `WaiveProposed.payload.voters`에 포함되고 `now() ≤ expiresAt`, 같은 proposal에 본인 표가 없을 것 (`unique (proposal_id, actor_id)` 부분 인덱스 — `payload->>'proposalId'` 추출 컬럼)
+  - 위 조건은 `SECURITY DEFINER` 함수로 정책에서 호출 (서버 시각 기준이므로 클라이언트 시계 조작 무력화)
 - `events` UPDATE/DELETE: 전면 금지
 
 **2) SyncEngine 알고리즘**
@@ -280,7 +312,10 @@ reproject   : 확정 이벤트(seq순) + pending(로컬 생성순) → project()
 
 **3) 의미 충돌 처리 (core 규칙과 일치)**
 - 같은 날 중복 지각: 두 기록 모두 유지 + 명세서에 ⚠ 표시 + 정정 유도
-- 탕감된 기록에 대한 정정: evolve에서 no-op, UI 알림
+- 탕감·철회된 기록에 대한 정정: evolve에서 no-op, UI 알림
+- 같은 기록에 동시 발의: seq가 앞선 발의만 유효
+- 오프라인에서 던진 표가 기한 후 도착: RLS가 거부 → outbox에서 제거하고 "기한이 지나 투표가 반영되지 않았습니다" 알림
+- 투표·철회의 시간 판정은 projection에서도 `server_at` 기준 (`client_at` 아님)
 - 동시에 같은 컵 상환: 클램프 + overpaid
 
 **4) 서버측 검증 수준 (MVP)**
@@ -289,7 +324,8 @@ reproject   : 확정 이벤트(seq순) + pending(로컬 생성순) → project()
 
 ### 테스트
 - SyncEngine 단위 테스트: 가짜 Remote로 순서 뒤섞기, 중복 전송, 오프라인→온라인, seq 구멍
-- RLS 테스트: 다른 그룹 접근 차단, member의 규정 변경 차단 (supabase local + pgTAP 또는 SQL 테스트)
+- RLS 테스트: 다른 그룹 접근 차단, member의 규정 변경 차단, 비투표권자 투표 차단, 중복 투표 차단, 기한 후 투표 차단, 타인 기록 철회·10분 후 철회 차단 (supabase local + pgTAP)
+- Playwright 3-컨텍스트: 탕감 발의 → 두 기기 찬성 → 세 기기 모두 컵 제거 확인
 - **Playwright 2-컨텍스트**: A 기록 → B에 3초 내 반영 / B 오프라인 기록 → 온라인 복귀 후 A에 반영 / 양쪽 동시 기록 후 동일 상태 수렴
 
 ### 완료 기준
@@ -325,6 +361,9 @@ reproject   : 확정 이벤트(seq순) + pending(로컬 생성순) → project()
   - [ ] `GradeFlip` — 배지 Y축 회전, 상승 금색/하락 적색 플래시
   - [ ] `Focus`/`Unfocus` — CameraRig 이동
   - [ ] `OnTime` — 받침대 반짝 + 저승사자 펜 내려놓기
+  - [ ] `ReviewTag` — 심의 중 컵에 "심의 중" 꼬리표(흔들리는 종이) + 보랏빛 림
+  - [ ] `BallotPlaque` — 투표자 받침대에 찬성 연꽃 / 반대 해골 명패가 솟아오름
+  - [ ] `GavelVerdict` — 가결: 의사봉 탕탕탕 → 대상 컵 금빛 → `Evaporate` / 부결·만료: "기각" 도장 + 꼬리표 낙하
 - [ ] 사운드 훅 인터페이스만 (`sfx('stamp')`, 실제 음원은 M6)
 
 ### 핵심 설계 디테일
@@ -429,7 +468,8 @@ seq(
 
 ### 작업 목록
 - [ ] **3D 에셋 (Blender)**
-  - 저승사자: 리깅 + 클립 `idle_think`(레퍼런스 턱괴기), `idle_page`, `yawn`, `polish_scythe`, `stamp`, `nod`, `tear`, `inspect`, `wave`, `adjust_glasses` / 10–15k tris
+  - 저승사자: 리깅 + 클립 `idle_think`(레퍼런스 턱괴기), `idle_page`, `yawn`, `polish_scythe`, `stamp`, `nod`, `tear`, `inspect`, `wave`, `adjust_glasses`, `gavel` / 10–15k tris
+  - 의사봉, 찬성 연꽃·반대 해골 명패, 심의 꼬리표
   - 컵(fresh/라벨 변형), 캐리어 박스, 책상, 서류, 연꽃, 왕관, 깃발, 테이프, 쇠사슬
   - 파이프라인: `gltf-transform` (meshopt 압축, 텍스처 리사이즈) → `assets/models/*.glb`, 총 2MB 이하
 - [ ] `CharacterModel` 교체: 프리미티브 → glb, 애니메이션 상태머신 (idle 가중치 랜덤 + 이벤트 액션 → idle 복귀)
