@@ -74,7 +74,7 @@ export default defineConfig({
       url: `http://127.0.0.1:${LOCAL_PORT}`,
       reuseExistingServer: true,
       // Make sure an .env.local with Supabase settings cannot leak into the local-only project.
-      env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '' },
+      env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '', VITE_CACHE_DIR: 'node_modules/.vite-e2e-local' },
     },
     ...(supabase
       ? [
@@ -82,7 +82,11 @@ export default defineConfig({
             command: `pnpm exec vite --port ${SYNC_PORT} --strictPort --host 127.0.0.1`,
             url: `http://127.0.0.1:${SYNC_PORT}`,
             reuseExistingServer: true,
-            env: { VITE_SUPABASE_URL: supabase.url, VITE_SUPABASE_ANON_KEY: supabase.anonKey },
+            env: {
+              VITE_SUPABASE_URL: supabase.url,
+              VITE_SUPABASE_ANON_KEY: supabase.anonKey,
+              VITE_CACHE_DIR: 'node_modules/.vite-e2e-sync',
+            },
           },
         ]
       : []),

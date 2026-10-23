@@ -3,6 +3,9 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  // Separate dev servers started side by side (the e2e projects) must not share one dependency cache:
+  // both optimize on a cold start and serve each other's half-written chunks (two Reacts).
+  ...(process.env.VITE_CACHE_DIR && { cacheDir: process.env.VITE_CACHE_DIR }),
   plugins: [
     react(),
     VitePWA({
