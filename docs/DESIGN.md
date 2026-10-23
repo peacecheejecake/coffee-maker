@@ -502,7 +502,7 @@ assets(id, group_id, path)                            -- 증빙 사진
 ```
 
 - 캐릭터 애니메이션: glb 애니메이션 클립 + `AnimationMixer`, 상태는 작은 상태머신(`idle ↔ action → idle`)
-- 성능: 컵 InstancedMesh, 파티클 풀, 30잔+ 압축 표시, DPR 상한(모바일 1.5)
+- 성능: 컵 InstancedMesh, 파티클 풀, 20잔+ 압축 표시, DPR 상한(모바일 1.5)
 
 ### 5.7 기술 스택
 
