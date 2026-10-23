@@ -1,3 +1,4 @@
+import type { PushPort } from '@coffee/app';
 import type { Platform } from '@coffee/ui';
 import { Capacitor } from '@capacitor/core';
 
@@ -96,4 +97,49 @@ export async function initNativeShell(navigate: (path: string) => void) {
     navigate(path);
   });
   requestAnimationFrame(() => void SplashScreen.hide());
+}
+
+const TOKEN_KEY = 'coffee-maker:push-token';
+
+/**
+ * APNs (iOS) / FCM (Android) registration through @capacitor/push-notifications. The token is stored
+ * on the server (native_push_tokens) and the notify Edge Function sends to it.
+ */
+export function createNativePush(): PushPort {
+  const platform = Capacitor.getPlatform() === 'ios' ? 'ios' : 'android';
+  let permission: NotificationPermission = 'default';
+  const plugin = () => import('@capacitor/push-notifications').then((m) => m.PushNotifications);
+  void plugin()
+    .then((p) => p.checkPermissions())
+    .then((r) => {
+      permission = r.receive === 'granted' ? 'granted' : r.receive === 'denied' ? 'denied' : 'default';
+    })
+    .catch(() => {});
+
+  return {
+    supported: () => true,
+    permission: () => permission,
+    async subscribe() {
+      const p = await plugin();
+      const { receive } = await p.requestPermissions();
+      permission = receive === 'granted' ? 'granted' : 'denied';
+      if (receive !== 'granted') return null;
+      const token = await new Promise<string | null>((resolve) => {
+        void p.addListener('registration', ({ value }) => resolve(value));
+        void p.addListener('registrationError', () => resolve(null));
+        void p.register();
+      });
+      if (!token) return null;
+      localStorage.setItem(TOKEN_KEY, token);
+      return { kind: 'native', token, platform };
+    },
+    async unsubscribe() {
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token) return null;
+      await (await plugin()).unregister().catch(() => {});
+      localStorage.removeItem(TOKEN_KEY);
+      return { kind: 'native', token, platform };
+    },
+    current: async () => (permission === 'granted' ? localStorage.getItem(TOKEN_KEY) : null),
+  };
 }

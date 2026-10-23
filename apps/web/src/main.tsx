@@ -5,7 +5,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { config, syncEnabled } from './config';
-import { createNativePlatform, initNativeShell, isNative } from './native';
+import { createNativePlatform, createNativePush, initNativeShell, isNative } from './native';
 import { createBrowserPush } from './push';
 import './styles.css';
 
@@ -18,7 +18,7 @@ const store = createLedgerStore({
   remote,
   // Shared groups keep evidence photos on the server so every member can see them.
   assets: remote ? createSupabaseAssets(remote.client) : local.assets,
-  push: remote ? createBrowserPush(config.vapidPublicKey) : null,
+  push: remote ? (isNative() ? createNativePush() : createBrowserPush(config.vapidPublicKey)) : null,
 });
 void store
   .getState()

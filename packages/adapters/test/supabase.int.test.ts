@@ -151,9 +151,17 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     await a.savePushSubscription(groupId, sub); // upsert
     expect((await a.client.from('push_subscriptions').select('endpoint')).data).toEqual([{ endpoint: sub.endpoint }]);
     expect((await b.client.from('push_subscriptions').select('endpoint')).data).toEqual([]);
+    const outsiderSub = { ...sub, endpoint: `${sub.endpoint}x` };
     const outsider = remote();
     await outsider.ensureSession();
-    await expect(outsider.savePushSubscription(groupId, { ...sub, endpoint: `${sub.endpoint}x` })).rejects.toThrow();
+    await expect(outsider.savePushSubscription(groupId, outsiderSub)).rejects.toThrow(/not_member/);
+    // The same browser endpoint registered by another account moves to that account.
+    await b.savePushSubscription(groupId, sub);
+    expect((await a.client.from('push_subscriptions').select('endpoint')).data).toEqual([]);
+    expect((await b.client.from('push_subscriptions').select('endpoint')).data).toEqual([{ endpoint: sub.endpoint }]);
+    await b.savePushSubscription(groupId, { ...sub, endpoint: `${sub.endpoint}-a` });
+    await b.deletePushSubscription(sub.endpoint);
+    await a.savePushSubscription(groupId, sub);
     await a.deletePushSubscription(sub.endpoint);
     expect((await a.client.from('push_subscriptions').select('endpoint')).data).toEqual([]);
     expect(await a.account()).toEqual({ anonymous: true });
@@ -181,11 +189,12 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     const late = ev(groupId, pa, { type: 'LateRecorded', playerId: pb });
     await a.push([late]);
     const arrived = () => received.find((e) => e.id === late.id);
-    // Realtime delivery can take a few seconds on a busy local stack.
-    for (let i = 0; i < 100 && !arrived(); i++) await new Promise((r) => setTimeout(r, 100));
+    // Realtime delivery can take a few seconds on a busy local stack, and the first change-feed
+    // subscription after a fresh `supabase start` takes longer still (the app's pull-on-subscribe covers that gap).
+    for (let i = 0; i < 250 && !arrived(); i++) await new Promise((r) => setTimeout(r, 100));
     stop();
     // Earlier inserts may be delivered too; the store merges by id, so only arrival matters.
     expect(arrived()).toMatchObject({ id: late.id, seq: expect.any(Number), serverAt: expect.any(String) });
     expect(received.every((e) => e.groupId === groupId)).toBe(true);
-  }, 20_000);
+  }, 35_000);
 });

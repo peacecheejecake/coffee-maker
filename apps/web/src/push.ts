@@ -30,14 +30,14 @@ export function createBrowserPush(vapidPublicKey: string | undefined): PushPort 
       const sub =
         (await reg.pushManager.getSubscription()) ??
         (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToBytes(vapidPublicKey!) }));
-      return sub.toJSON() as PushSubscriptionData;
+      return { kind: 'web', ...(sub.toJSON() as PushSubscriptionData) };
     },
     async unsubscribe() {
       if (!supported()) return null;
       const sub = await (await registration()).pushManager.getSubscription();
       if (!sub) return null;
       await sub.unsubscribe();
-      return sub.endpoint;
+      return { kind: 'web', ...(sub.toJSON() as PushSubscriptionData) };
     },
     async current() {
       if (!supported()) return null;

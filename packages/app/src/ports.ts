@@ -36,6 +36,9 @@ export interface RemoteSync {
   subscribe(groupId: GroupId, onEvents: (events: LedgerEvent[]) => void, onStatus: (s: RemoteStatus) => void): () => void;
   savePushSubscription(groupId: GroupId, subscription: PushSubscriptionData): Promise<void>;
   deletePushSubscription(endpoint: string): Promise<void>;
+  /** APNs/FCM device token from the native shell. */
+  saveNativePushToken(groupId: GroupId, token: string, platform: 'ios' | 'android'): Promise<void>;
+  deleteNativePushToken(token: string): Promise<void>;
   /** Anonymous accounts vanish with the browser's data; linking makes them recoverable. */
   account(): Promise<{ anonymous: boolean; email?: string }>;
   /** Starts an OAuth redirect that attaches a provider identity to the current (anonymous) user. */
@@ -47,13 +50,19 @@ export interface PushSubscriptionData {
   keys: { p256dh: string; auth: string };
 }
 
-/** Browser push plumbing (service worker + Push API), injected by the app shell. */
+/** What a device registered for push: a Web Push subscription, or a native APNs/FCM token. */
+export type PushRegistration =
+  | ({ kind: 'web' } & PushSubscriptionData)
+  | { kind: 'native'; token: string; platform: 'ios' | 'android' };
+
+/** Push plumbing injected by the app shell: Web Push in browsers, APNs/FCM in the native shell. */
 export interface PushPort {
   supported(): boolean;
   permission(): NotificationPermission | 'unsupported';
-  subscribe(): Promise<PushSubscriptionData | null>;
-  /** Returns the endpoint that was removed, if any. */
-  unsubscribe(): Promise<string | null>;
+  subscribe(): Promise<PushRegistration | null>;
+  /** Returns what was removed, if anything. */
+  unsubscribe(): Promise<PushRegistration | null>;
+  /** Identifier of the current registration (endpoint or token), if any. */
   current(): Promise<string | null>;
 }
 

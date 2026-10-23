@@ -102,21 +102,27 @@ export function createSupabaseRemote(
     },
 
     async savePushSubscription(groupId, sub) {
-      const { data } = await client.auth.getUser();
-      if (!data.user) throw new Error('not_authenticated');
+      // RPC: the endpoint may still belong to an earlier account on this browser.
       check(
-        await client.from('push_subscriptions').upsert({
-          endpoint: sub.endpoint,
-          user_id: data.user.id,
-          group_id: groupId,
-          p256dh: sub.keys.p256dh,
-          auth: sub.keys.auth,
+        await client.rpc('save_push_subscription', {
+          p_group_id: groupId,
+          p_endpoint: sub.endpoint,
+          p_p256dh: sub.keys.p256dh,
+          p_auth: sub.keys.auth,
         }),
       );
     },
 
     async deletePushSubscription(endpoint) {
       check(await client.from('push_subscriptions').delete().eq('endpoint', endpoint));
+    },
+
+    async saveNativePushToken(groupId, token, platform) {
+      check(await client.rpc('save_native_push_token', { p_group_id: groupId, p_token: token, p_platform: platform }));
+    },
+
+    async deleteNativePushToken(token) {
+      check(await client.from('native_push_tokens').delete().eq('token', token));
     },
 
     async account() {

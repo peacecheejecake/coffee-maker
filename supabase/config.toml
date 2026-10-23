@@ -373,7 +373,7 @@ authorization_url_path = "/oauth/consent"
 allow_dynamic_registration = false
 
 [edge_runtime]
-enabled = false
+enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
 # `per_worker` (default) — enables hot reload during local development.
 # `oneshot` — fallback mode if hot reload causes issues (e.g. in large repos or with symlinks).
@@ -413,3 +413,27 @@ enabled = true
 # formatted with uppercase keywords, indent 2, max width 180, trailing commas,
 # and column/key alignment. Set to "null" to emit raw, unformatted SQL.
 # format_options = "{\"keywordCase\":\"upper\",\"indent\":2,\"maxWidth\":180,\"commaStyle\":\"trailing\"}"
+
+# The notify function is called by the events trigger (pg_net) with a shared secret, not a user JWT.
+[functions.notify]
+verify_jwt = false
+
+# Secrets for local functions, taken from the environment when `supabase start` runs
+# (see supabase/functions/.env.local, never committed). Unset ones are simply empty.
+[edge_runtime.secrets]
+NOTIFY_SECRET = "env(NOTIFY_SECRET)"
+VAPID_PUBLIC_KEY = "env(VAPID_PUBLIC_KEY)"
+VAPID_PRIVATE_KEY = "env(VAPID_PRIVATE_KEY)"
+VAPID_SUBJECT = "env(VAPID_SUBJECT)"
+PUSH_TEST_CA = "env(PUSH_TEST_CA)"
+APNS_KEY_ID = "env(APNS_KEY_ID)"
+APNS_TEAM_ID = "env(APNS_TEAM_ID)"
+APNS_PRIVATE_KEY = "env(APNS_PRIVATE_KEY)"
+APNS_BUNDLE_ID = "env(APNS_BUNDLE_ID)"
+APNS_PRODUCTION = "env(APNS_PRODUCTION)"
+APNS_ORIGIN = "env(APNS_ORIGIN)"
+FCM_PROJECT_ID = "env(FCM_PROJECT_ID)"
+FCM_CLIENT_EMAIL = "env(FCM_CLIENT_EMAIL)"
+FCM_PRIVATE_KEY = "env(FCM_PRIVATE_KEY)"
+FCM_ORIGIN = "env(FCM_ORIGIN)"
+FCM_TOKEN_URL = "env(FCM_TOKEN_URL)"

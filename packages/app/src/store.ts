@@ -405,14 +405,16 @@ export function createLedgerStore({
         const { groupId } = get();
         if (!remote || !push?.supported() || !groupId) return false;
         if (!on) {
-          const endpoint = await push.unsubscribe();
-          if (endpoint) await remote.deletePushSubscription(endpoint);
+          const gone = await push.unsubscribe();
+          if (gone?.kind === 'web') await remote.deletePushSubscription(gone.endpoint);
+          if (gone?.kind === 'native') await remote.deleteNativePushToken(gone.token);
           return false;
         }
-        const sub = await push.subscribe();
-        if (!sub) return false;
+        const reg = await push.subscribe();
+        if (!reg) return false;
         await remote.ensureSession();
-        await remote.savePushSubscription(groupId, sub);
+        if (reg.kind === 'web') await remote.savePushSubscription(groupId, { endpoint: reg.endpoint, keys: reg.keys });
+        else await remote.saveNativePushToken(groupId, reg.token, reg.platform);
         return true;
       },
 

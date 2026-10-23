@@ -60,6 +60,8 @@ export class FakeServer {
       },
       savePushSubscription: async () => {},
       deletePushSubscription: async () => {},
+      saveNativePushToken: async () => {},
+      deleteNativePushToken: async () => {},
       account: async () => ({ anonymous: true }),
       linkAccount: async () => {},
       subscribe(groupId, cb, onStatus: (s: RemoteStatus) => void) {
