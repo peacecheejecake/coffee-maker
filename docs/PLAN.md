@@ -541,10 +541,19 @@ seq(
 > - **접근성**: axe(WCAG A/AA serious·critical) 위반 0 — 온보딩·메인·각 시트.
 > - **Node 22 필요**: PWA 빌드 체인이 Node 20.19+를 요구 → `.nvmrc` 22, `engines >=20.19`.
 >
-> 하지 못한 것 / 남은 일:
-> - **정식 3D 에셋(Blender 리깅·애니메이션 glb)**: 이 환경에 Blender가 없어 제작 불가. 절차적 저승사자를 유지하고 포즈·유휴 동작을 코드로 구현함. glb로 교체하려면 `ReaperDesk`를 같은 props(fx·idle·rollCall)로 구현하는 컴포넌트로 바꾸면 됨.
-> - **푸시의 실제 발송은 미검증**: 로컬 스택에서 edge runtime을 끈 상태라 함수 실행·브라우저 수신까지는 확인 못 함. 운영 설정 필요 — VAPID 키 생성, 함수 배포(`supabase functions deploy notify`)와 시크릿(`NOTIFY_SECRET`, `VAPID_*`), `notify_config` 행 입력, `VITE_VAPID_PUBLIC_KEY`.
-> - **Google/Apple 로그인**: 각 제공자 OAuth 클라이언트 등록·Supabase 대시보드 설정 필요(코드 경로만 구현).
+> 후속 (2026-10-23):
+> - **저승사자 glb**: `scripts/blender/reaper.py`가 Blender 4.5 헤드리스로 모델링·리깅(root/spine/head/양팔/돋보기)·클립 12종을 만들고 단일 스킨 메시로 합쳐 내보냄 → gltf-transform meshopt **160KB, 약 2만 tris**. `ReaperModel`(useGLTF + useAnimations)이 씬 액션은 1회 재생 후 idle 복귀, 유휴 시 5–11초마다 잔동작, 9시 직전엔 명부(page). 로드 실패 시 절차적 저승사자로 대체(`ModelBoundary`). 처음 6만 tris는 SwiftShader e2e를 느리게 해 줄임.
+>   - 함정: StrictMode의 리허설 언마운트에서 useAnimations가 모든 액션을 멈추는데 "이미 idle"이라 재생을 건너뛰어 바인드 포즈(돋보기 노출)로 남았음 → effect 정리에서 현재 클립 초기화.
+> - **푸시 실제 발송 검증**: 로컬 edge runtime + TLS 목 서버로 트리거 → 함수 → 전달까지 종단 테스트(`push.e2e.int.test.ts`). 웹은 RFC 8291 페이로드를 구독자 키로 복호화, APNs는 ES256 JWT, FCM은 RS256 assertion → 액세스 토큰 → 메시지를 검증. 대상자만 받는지도 확인.
+>   - 같은 엔드포인트/토큰을 다른 계정이 이어받으면 RLS에 막히던 문제 → 소유권 이전 RPC(`save_push_subscription`, `save_native_push_token`, 멤버 확인).
+> - **새 그룹 유실 버그**: 그룹 생성 직후(저장 완료 전) 새로고침하면 온보딩으로 돌아가던 문제 — 이벤트·포인터 저장 후에 화면 전환(PWA 오프라인 e2e에서 발견, 단위 테스트 추가).
+> - e2e 안정화: 워커 3개(CI 2), 멀티 디바이스(sync) 프로젝트는 다른 프로젝트 다음에 실행.
+> - 시각 테스트: Linux 기준 스크린샷(Playwright 이미지, `scripts/linux-baselines.sh`) + CI `visual` 잡.
+>
+> 남은 일 (사용자 계정 필요):
+> - **운영 푸시**: VAPID 키, 함수 배포와 시크릿, `notify_config` 행, `VITE_VAPID_PUBLIC_KEY` (README "알림").
+> - **Google/Apple 로그인**: 각 제공자 OAuth 클라이언트 등록·Supabase 대시보드 설정(코드 경로만 구현).
+> - 저승사자 외 소품(컵·책상 등)은 코드 메시 유지 — 인스턴싱 성능상 의도적.
 > - Lighthouse 점수 측정은 하지 않음(대신 번들 예산·axe·오프라인 e2e로 검증).
 
 ### 작업 목록
@@ -596,10 +605,14 @@ seq(
 > - **사무실 TV 대시보드**(`/tv`): 조작 UI 없이 순위표 + 빚 있는 탑 순회 카메라. Tauri 대신 웹 라우트로 구현(어떤 TV 브라우저든 사용 가능).
 > - `/demo` 라우트(데모 바로 열기), 모바일에서 온보딩 자동 포커스 제거(키보드가 첫 화면을 가림).
 >
-> 남은 일 (이 환경에서 불가):
-> - **Android 빌드/실행**: Android SDK가 없어 `gradlew` 빌드는 미실행. 프로젝트·매니페스트·아이콘은 준비됨.
-> - **네이티브 푸시(APNs/FCM)**: WKWebView에는 Web Push가 없어 네이티브 앱에서는 서버 푸시가 꺼짐(로컬 출근 알림만). FCM/APNs 토큰 저장과 `notify` 함수의 FCM 발송 분기는 인증서·Firebase 프로젝트가 필요.
-> - **Universal Links / App Links**(https 링크로 앱 열기): 도메인과 `apple-app-site-association`/`assetlinks.json` 호스팅 필요. 현재는 커스텀 스킴.
+> 후속 (2026-10-23):
+> - **네이티브 푸시**: `@capacitor/push-notifications`로 APNs/FCM 토큰 등록 → `native_push_tokens`(본인 행, RPC로 저장) → `notify`가 플랫폼별 발송(APNs ES256 provider token, FCM HTTP v1 서비스 계정). 죽은 토큰 정리. iOS: AppDelegate 등록 콜백 + `aps-environment` entitlement, 시뮬레이터 빌드 확인.
+> - **Universal Links / App Links**: `scripts/configure-app-links.mjs --domain --team --android-sha256`가 `.well-known` 두 파일, iOS Associated Domains, Android `autoVerify` intent filter를 생성(재실행 시 교체, 단위 테스트).
+>
+> 남은 일 (사용자 계정·승인 필요):
+> - **Android 빌드/실행**: Android SDK 설치에 라이선스 동의가 필요 — 사용자 승인 후 진행. 프로젝트·매니페스트·아이콘은 준비됨.
+> - **실제 푸시 키**: Apple Developer APNs 키(.p8)·Team ID, Firebase 프로젝트(`google-services.json`, 서비스 계정).
+> - **도메인**: 정해지면 `configure-app-links.mjs` 실행 후 배포.
 > - 스토어 제출물(스크린샷·개인정보 처리방침·서명).
 
 ### 작업 목록
