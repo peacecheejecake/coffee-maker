@@ -12,7 +12,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       injectRegister: false,
       injectManifest: {
-        globPatterns: ['**/*.{js,css,html,woff,png,svg}'],
+        globPatterns: ['**/*.{js,css,html,woff,png,svg,glb}'],
         // The full font is a rare fallback; it is fetched (and HTTP-cached) only when a name needs it.
         globIgnores: ['fonts/Pretendard-Bold.woff'],
         // The 3D chunk is ~1 MB uncompressed; it must be cached for offline use.

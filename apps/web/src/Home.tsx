@@ -6,6 +6,9 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { createDemoLedger } from './demo/demoLedger';
 import { syncEnabled } from './config';
 import { FONT_URL, fontFor } from './fonts';
+
+/** Rigged reaper exported by scripts/blender/reaper.py (meshopt-compressed). */
+const REAPER_MODEL_URL = '/models/reaper.glb';
 import { toSceneModel } from './model/toSceneModel';
 import { useSceneEvents } from './model/useSceneEvents';
 
@@ -50,6 +53,8 @@ function SceneView({ focusId, focusDesk, onSelectTower }: SceneSlotProps) {
   );
   const { queue, consume } = useSceneEvents(groupId, ledger, events);
   const [animating, setAnimating] = useState(false);
+  const [reaperReady, setReaperReady] = useState(false);
+  const markReaperReady = useCallback(() => setReaperReady(true), []);
   const { sfx, t } = useUi();
   const minutes = toMinutes(wallNow().hhmm);
   const start = toMinutes(currentRuleset(ledger).defaultStartTime);
@@ -59,7 +64,7 @@ function SceneView({ focusId, focusDesk, onSelectTower }: SceneSlotProps) {
     [t],
   );
   return (
-    <div className="cm-stage" aria-busy={animating} data-testid="scene">
+    <div className="cm-stage" aria-busy={animating} data-testid="scene" data-reaper-ready={reaperReady}>
       <Suspense fallback={<div className="scene-loading" aria-hidden />}>
         <TowerScene
           model={model}
@@ -73,6 +78,8 @@ function SceneView({ focusId, focusDesk, onSelectTower }: SceneSlotProps) {
           rollCall={minutes >= start - 10 && minutes < start}
           reaperLines={reaperLines}
           resolveFont={fontFor}
+          reaperModelUrl={REAPER_MODEL_URL}
+          onReaperReady={markReaperReady}
         />
       </Suspense>
     </div>

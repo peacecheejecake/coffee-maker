@@ -44,6 +44,10 @@ export interface TowerSceneProps {
   reaperLines?: string[];
   /** Font for a given piece of 3D text (lets rare characters fall back to a fuller font). */
   resolveFont?: (text: string) => string;
+  /** Rigged reaper glb; the primitive placeholder is used without it. */
+  reaperModelUrl?: string;
+  /** The reaper model finished loading (e.g. to mark the scene ready for screenshots). */
+  onReaperReady?: () => void;
   /** "demand" (default) renders only when something changes; "always" for profiling. */
   frameloop?: 'demand' | 'always';
   /** Extra scene children, e.g. dev probes. */
@@ -69,6 +73,8 @@ export function TowerScene({
   rollCall = false,
   reaperLines,
   resolveFont,
+  reaperModelUrl,
+  onReaperReady,
   frameloop = 'demand',
   children,
 }: TowerSceneProps) {
@@ -180,7 +186,15 @@ export function TowerScene({
       >
         <Lighting timeOfDay={timeOfDay} />
         <Floor shadowKey={shadowKey} />
-        <ReaperDesk fx={fx} idle={idle} rollCall={rollCall} glanceAt={glanceAt} {...(reaperLines && { lines: reaperLines })} />
+        <ReaperDesk
+          fx={fx}
+          idle={idle}
+          rollCall={rollCall}
+          glanceAt={glanceAt}
+          {...(reaperLines && { lines: reaperLines })}
+          {...(reaperModelUrl && { modelUrl: reaperModelUrl })}
+          {...(onReaperReady && { onModelReady: onReaperReady })}
+        />
         <CupInstances towers={placed} fx={fx} hidden={hidden} idleSway={idle} />
         <TowerFixtures towers={placed} fx={fx} />
         <BallotPlaques towers={placed} />

@@ -16,8 +16,18 @@ export function trackErrors(page: Page) {
  * (networkidle is unreliable against the Vite dev server's HMR socket.)
  */
 export async function settle(page: Page) {
-  await page.locator('canvas').waitFor();
+  await sceneReady(page);
   await page.waitForTimeout(3500);
+}
+
+/**
+ * The app scene streams in the reaper model; wait for it so screenshots never catch the placeholder and
+ * its first upload and shader compile do not stall the next interaction.
+ */
+async function sceneReady(page: Page) {
+  await page.locator('canvas').waitFor();
+  const scene = page.getByTestId('scene');
+  if (await scene.count()) await expect(scene).toHaveAttribute('data-reaper-ready', 'true', { timeout: 30_000 });
 }
 
 /**
@@ -40,6 +50,7 @@ export async function createGroup(page: Page, name: string) {
   await page.getByLabel('내 이름').fill(name);
   await page.getByRole('button', { name: '관할 구역 개설' }).click();
   await expect(page.getByRole('button', { name: /업보 청구/ })).toBeVisible();
+  await sceneReady(page);
 }
 
 export async function addPlayer(page: Page, name: string) {

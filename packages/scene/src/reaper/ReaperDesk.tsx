@@ -1,8 +1,9 @@
 import { Html, RoundedBox } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { BoxGeometry, LatheGeometry, Vector2, type Group } from 'three';
 import type { FxState } from '../director/fx';
+import { ModelBoundary, ReaperModel } from './ReaperModel';
 import { StaticInstances, trs } from '../instancing/StaticInstances';
 import { DESK } from '../layout/dimensions';
 import { PALETTE } from '../palette';
@@ -24,9 +25,12 @@ interface ReaperDeskProps {
   glanceAt?: number[];
   /** Lines for the speech bubble when tapped. */
   lines?: string[];
+  /** Rigged glb (scripts/blender/reaper.py). Without it, the primitive placeholder is used. */
+  modelUrl?: string;
+  onModelReady?: () => void;
 }
 
-export function ReaperDesk({ fx, idle = false, rollCall = false, glanceAt = [], lines = [] }: ReaperDeskProps) {
+export function ReaperDesk({ fx, idle = false, rollCall = false, glanceAt = [], lines = [], modelUrl, onModelReady }: ReaperDeskProps) {
   const desk = useRef<Group>(null);
   const idleState = useRef<{ action: IdleAction; t0: number; glance: number; next: number } | null>(null);
   const [bubble, setBubble] = useState<string | null>(null);
@@ -77,7 +81,17 @@ export function ReaperDesk({ fx, idle = false, rollCall = false, glanceAt = [], 
           if (lines.length) setBubble(lines[Math.floor(Math.random() * lines.length)]!);
         }}
       >
-        <Reaper head={head} stampArm={stampArm} penHand={penHand} magnifier={magnifier} />
+        {modelUrl ? (
+          <ModelBoundary fallback={<Reaper head={head} stampArm={stampArm} penHand={penHand} magnifier={magnifier} />}>
+            <Suspense fallback={<Reaper head={head} stampArm={stampArm} penHand={penHand} magnifier={magnifier} />}>
+              <group position={[0, 0.25, -0.35]}>
+                <ReaperModel url={modelUrl} fx={fx} idle={idle} rollCall={rollCall} {...(onModelReady && { onReady: onModelReady })} />
+              </group>
+            </Suspense>
+          </ModelBoundary>
+        ) : (
+          <Reaper head={head} stampArm={stampArm} penHand={penHand} magnifier={magnifier} />
+        )}
       </group>
       {bubble && (
         <Html position={[0, 2.55, -0.3]} center zIndexRange={[20, 0]}>
