@@ -139,17 +139,27 @@ evolve(state, event) => state
 
 **산출물**: `apps/web` 기본 셸, `packages/scene`, `/sandbox` 개발 페이지
 
+> ✅ **완료 (2026-10-23)** — 단위 테스트 scene 20 / web 4, Playwright 7 (스모크·탭 포커스·시각 회귀 6장, 로컬 Chrome + SwiftShader).
+> 계획 대비 변경:
+> - **압축 기준 30 → 20잔** (위에 10–19잔 유지). 30잔 기준으론 한 탑 때문에 전체가 점처럼 작아졌음.
+> - **전체 뷰 높이 상한**: 화면 폭이 보여줄 수 있는 높이(×1.15)까지만 프레이밍 → 아주 높은 탑은 화면 위로 뚫고 나감(의도된 연출). 포커스 시엔 전체 높이.
+> - **draw call 목표 "< 40" → "약 30 + 탑당 2"** (20탑×40잔 = 72). 컵·받침대·링·명판·배지·캐리어 박스·서류 모두 인스턴싱, contact shadow는 탑 실루엣이 바뀔 때만 1회 베이크(575 → 72). 남은 탑당 2는 이름/등급 텍스트 → M6에서 troika `BatchedText`로 묶어 상수화 검토.
+> - `LedgerState → SceneModel` 매퍼는 `apps/web/src/model`에 둠 (M2에서 `packages/app`으로 이동). scene → core import 금지 규칙 추가.
+> - 폰트: Pretendard에 KS X 1001 서브셋이 없어 `scripts/subset-font.py`로 직접 생성(243KB). 서브셋 밖 글자 fallback은 M6.
+> - 번들: `three` 청크 365KB gzip — M6 예산(350KB) 초과, M6에서 drei 의존 축소/지연 로드로 처리.
+> - Playwright 기준 스크린샷은 플랫폼별(`-darwin`)이라 **CI에는 아직 미포함**. CI용 linux 기준은 M3에서 e2e를 CI에 올릴 때 생성.
+
 ### 작업 목록
-- [ ] `apps/web`: Vite + React 19, 라우트 `/`(메인), `/sandbox`(개발용, prod 빌드 제외)
-- [ ] `scene/SceneRoot` — `<Canvas>` 설정 (DPR `[1, 1.5]` 모바일 / `[1, 2]` 데스크톱, `frameloop="demand"`로 정적일 땐 렌더 안 함)
-- [ ] `scene/layout/towerArc.ts` — 플레이어 수 → 탑 좌표 (순수 함수, 테스트)
-- [ ] `scene/cups/` — 컵 지오메트리 + `CupStack` (InstancedMesh)
-- [ ] `scene/tower/` — `Pedestal`, `Nameplate`(한글 텍스트), `GradeBadge`
-- [ ] `scene/reaper/` — 프리미티브 저승사자 + 책상 + 서류 더미
-- [ ] `scene/environment/` — 배경 그라데이션, 키/림 라이트, ContactShadows
-- [ ] `scene/camera/CameraRig` — overview 자동 프레이밍, focus(playerId)
-- [ ] `scene/viewModel.ts` — `TowerViewModel` 정의 (scene이 받는 유일한 데이터 형태)
-- [ ] `/sandbox`: leva 패널로 플레이어 수·잔 수·등급 조작
+- [x] `apps/web`: Vite + React 19, 라우트 `/`(메인), `/sandbox`(개발용, prod 빌드 제외)
+- [x] `scene/SceneRoot` — `<Canvas>` 설정 (DPR `[1, 1.5]` 모바일 / `[1, 2]` 데스크톱, `frameloop="demand"`로 정적일 땐 렌더 안 함)
+- [x] `scene/layout/towerArc.ts` — 플레이어 수 → 탑 좌표 (순수 함수, 테스트)
+- [x] `scene/cups/` — 컵 지오메트리 + `CupStack` (InstancedMesh)
+- [x] `scene/tower/` — `Pedestal`, `Nameplate`(한글 텍스트), `GradeBadge`
+- [x] `scene/reaper/` — 프리미티브 저승사자 + 책상 + 서류 더미
+- [x] `scene/environment/` — 배경 그라데이션, 키/림 라이트, ContactShadows
+- [x] `scene/camera/CameraRig` — overview 자동 프레이밍, focus(playerId)
+- [x] `scene/viewModel.ts` — `TowerViewModel` 정의 (scene이 받는 유일한 데이터 형태)
+- [x] `/sandbox`: leva 패널로 플레이어 수·잔 수 조작 (URL 파라미터로 초기값 지정 가능, e2e에서 사용)
 
 ### 핵심 설계 디테일
 
@@ -179,7 +189,7 @@ interface TowerViewModel {
 - 프로필 점들로 `LatheGeometry`(세그먼트 20 → 스무스 셰이딩) + 뚜껑 + 슬리브(별도 메쉬, 플레이어 색)
 - 파트별 InstancedMesh 3개 (몸통/뚜껑/슬리브) × 전체 공유 → **탑 수와 무관하게 draw call 3**
 - 쌓기: 컵 높이 h, 뚜껑 위에 다음 컵이 얹힘 (step = h × 0.92), 각 컵에 결정론적 미세 회전(±4°, ID 해시 기반) → 손으로 쌓은 느낌
-- 30잔 초과: 아래쪽 `floor((n-20)/10)×10`잔을 "캐리어 박스(×10)"로 대체 → 보이는 오브젝트 상한 유지
+- 20잔 초과: 아래쪽 `floor((n-10)/10)×10`잔을 "캐리어 박스(×10)"로 대체 → 보이는 컵은 10–19잔으로 유지
 
 **4) 한글 텍스트**
 - drei `<Text>`(troika) + **Pretendard 서브셋 폰트**(KS X 1001 2,350자 + 영숫자, woff ~300KB) → 이름에 없는 글자 대비 fallback으로 전체 폰트 지연 로드

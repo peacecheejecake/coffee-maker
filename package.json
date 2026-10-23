@@ -8,15 +8,19 @@
   "scripts": {
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "e2e": "pnpm --filter @coffee/web e2e",
+    "dev": "pnpm --filter @coffee/web dev",
     "lint": "eslint .",
-    "depcheck": "depcruise packages --config .dependency-cruiser.cjs",
+    "depcheck": "depcruise packages apps --config .dependency-cruiser.cjs",
     "check": "pnpm typecheck && pnpm lint && pnpm depcheck && pnpm test"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
+    "@playwright/test": "~1.56.1",
     "@vitest/coverage-v8": "~3.2.7",
     "dependency-cruiser": "^16.10.4",
     "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.72.0",
     "vitest": "~3.2.7"
