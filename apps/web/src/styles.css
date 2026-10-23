@@ -51,3 +51,10 @@ body {
   border-radius: 8px;
   pointer-events: none;
 }
+
+/* The scene could not load (see SceneBoundary in Home.tsx): the HUD stays; offer a reload in its place. */
+.scene-failed {
+  display: grid;
+  place-items: center;
+  height: 100%;
+}

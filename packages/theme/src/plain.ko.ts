@@ -6,6 +6,7 @@ export const plainKo: Messages = {
   'app.title': '지각 커피 장부',
   'app.loading': '불러오는 중…',
   'hud.ballots': '투표',
+  'scene.reload': '3D 화면 다시 불러오기',
   'action.record': '지각 기록',
   'action.settings': '설정',
   'invite.title': '그룹 초대',

@@ -10,6 +10,7 @@ export const underworldKo = {
   'hud.ballots': '심의함',
   'hud.me': '이 기기: {name}',
   'hud.towers': '업보 탑 목록',
+  'scene.reload': '저승 무대 다시 불러오기',
   'hud.tower': '{name}의 업보 탑, 미상환 {outstanding}잔',
   'action.record': '업보 청구',
   'action.settings': '공사 규정',

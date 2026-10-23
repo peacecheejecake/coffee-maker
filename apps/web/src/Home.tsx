@@ -1,7 +1,7 @@
 import { currentRuleset, toMinutes } from '@coffee/core';
 import type { TimeOfDay } from '@coffee/scene';
 import { AppShell, TvShell, useLedger, useUi, type SceneSlotProps } from '@coffee/ui';
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { createDemoLedger } from './demo/demoLedger';
 import { syncEnabled } from './config';
@@ -14,6 +14,21 @@ import { useSceneEvents } from './model/useSceneEvents';
 
 // three.js + R3F are most of the bundle; the HUD and sheets work while the scene streams in.
 const TowerScene = lazy(() => import('@coffee/scene').then((m) => ({ default: m.TowerScene })));
+
+/**
+ * The scene chunk failed to load (offline before it arrived, or a stale chunk after a deploy). Without
+ * this the whole app unmounts; instead the HUD keeps working. Browsers remember a failed module fetch
+ * for the life of the page, so getting the scene back takes a reload (the ledger is stored locally).
+ */
+class SceneBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { failed: boolean }> {
+  override state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  override render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
 
 export function Home({ autoDemo = false }: { autoDemo?: boolean }) {
   const importGroup = useLedger((s) => s.importGroup);
@@ -65,23 +80,33 @@ function SceneView({ focusId, focusDesk, onSelectTower }: SceneSlotProps) {
   );
   return (
     <div className="cm-stage" aria-busy={animating} data-testid="scene" data-reaper-ready={reaperReady}>
-      <Suspense fallback={<div className="scene-loading" aria-hidden />}>
-        <TowerScene
-          model={model}
-          fontUrl={FONT_URL}
-          onSelectTower={onSelectTower}
-          events={queue}
-          onEventsConsumed={consume}
-          onAnimatingChange={setAnimating}
-          onSfx={sfx}
-          timeOfDay={timeOfDay}
-          rollCall={minutes >= start - 10 && minutes < start}
-          reaperLines={reaperLines}
-          resolveFont={fontFor}
-          reaperModelUrl={REAPER_MODEL_URL}
-          onReaperReady={markReaperReady}
-        />
-      </Suspense>
+      <SceneBoundary
+        fallback={
+          <div className="scene-loading scene-failed">
+            <button type="button" className="cm-button" onClick={() => window.location.reload()}>
+              {t('scene.reload')}
+            </button>
+          </div>
+        }
+      >
+        <Suspense fallback={<div className="scene-loading" aria-hidden />}>
+          <TowerScene
+            model={model}
+            fontUrl={FONT_URL}
+            onSelectTower={onSelectTower}
+            events={queue}
+            onEventsConsumed={consume}
+            onAnimatingChange={setAnimating}
+            onSfx={sfx}
+            timeOfDay={timeOfDay}
+            rollCall={minutes >= start - 10 && minutes < start}
+            reaperLines={reaperLines}
+            resolveFont={fontFor}
+            reaperModelUrl={REAPER_MODEL_URL}
+            onReaperReady={markReaperReady}
+          />
+        </Suspense>
+      </SceneBoundary>
     </div>
   );
 }
