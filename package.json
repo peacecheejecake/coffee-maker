@@ -7,7 +7,7 @@
   },
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "test": "pnpm -r test",
+    "test": "pnpm -r test && vitest run --config scripts/vitest.config.ts",
     "e2e": "pnpm --filter @coffee/web e2e",
     "dev": "pnpm --filter @coffee/web dev",
     "lint": "eslint .",
