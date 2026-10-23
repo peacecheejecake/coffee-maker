@@ -1,9 +1,39 @@
-import type { GroupId, LedgerEvent } from '@coffee/core';
+import type { GroupId, LedgerEvent, PlayerId } from '@coffee/core';
 
-/** Append-only event log, per group. Implementations: in-memory (tests), IndexedDB (web), remote (M3). */
+/** Device-local event log, per group. Implementations: in-memory (tests), IndexedDB (web). */
 export interface EventStore {
   load(groupId: GroupId): Promise<LedgerEvent[]>;
+  /** Adds events not stored yet (by id); existing ids are left alone. */
   append(events: readonly LedgerEvent[]): Promise<void>;
+  /** Inserts or replaces by id — used to record the server's seq/serverAt once confirmed. */
+  put(events: readonly LedgerEvent[]): Promise<void>;
+  /** Drops events the server rejected. */
+  remove(ids: readonly string[]): Promise<void>;
+}
+
+export interface PushResult {
+  id: string;
+  seq?: number;
+  serverAt?: string;
+  /** Server rejection reason, e.g. "proposal_expired". Absent when accepted. */
+  error?: string;
+}
+
+export type RemoteStatus = 'connecting' | 'subscribed' | 'closed';
+
+/** Server side of sync (Supabase in production, a fake in tests). */
+export interface RemoteSync {
+  ensureSession(): Promise<void>;
+  createGroup(input: { groupId: GroupId; playerId: PlayerId; name: string }): Promise<{ inviteCode: string }>;
+  joinGroup(code: string): Promise<{ groupId: GroupId; playerId: PlayerId | null }>;
+  claimPlayer(groupId: GroupId, playerId: PlayerId): Promise<void>;
+  /** Players already bound to an account, so a newcomer can't pick them. */
+  claimedPlayers(groupId: GroupId): Promise<PlayerId[]>;
+  inviteCode(groupId: GroupId): Promise<string | null>;
+  push(events: readonly LedgerEvent[]): Promise<PushResult[]>;
+  /** Confirmed events with seq greater than `afterSeq`, in seq order. */
+  pull(groupId: GroupId, afterSeq: number): Promise<LedgerEvent[]>;
+  subscribe(groupId: GroupId, onEvents: (events: LedgerEvent[]) => void, onStatus: (s: RemoteStatus) => void): () => void;
 }
 
 /** Small device-local settings: active group, who is using this device, UI tone. */

@@ -1,6 +1,28 @@
+import { execSync } from 'node:child_process';
 import { defineConfig } from '@playwright/test';
 
-const PORT = 5181;
+const LOCAL_PORT = 5181;
+const SYNC_PORT = 5182;
+
+/** Local Supabase connection, if `pnpm supabase start` is running. Sync tests are skipped otherwise. */
+function localSupabase(): { url: string; anonKey: string } | null {
+  try {
+    const out = execSync('pnpm exec supabase status -o env', { cwd: '../..', stdio: ['ignore', 'pipe', 'ignore'] }).toString();
+    const get = (k: string) => new RegExp(`^${k}="?([^"\\n]+)"?$`, 'm').exec(out)?.[1];
+    const url = get('API_URL');
+    const anonKey = get('ANON_KEY');
+    return url && anonKey ? { url, anonKey } : null;
+  } catch {
+    return null;
+  }
+}
+
+const supabase = localSupabase();
+const chrome = {
+  channel: 'chrome',
+  viewport: { width: 1280, height: 800 },
+  launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
+};
 
 /**
  * Local visual checks against the installed Chrome (no browser download). WebGL runs on SwiftShader so
@@ -13,15 +35,39 @@ export default defineConfig({
   // The first run after a dependency change waits for Vite's pre-bundling.
   retries: 1,
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01 } },
-  use: {
-    baseURL: `http://127.0.0.1:${PORT}`,
-    channel: 'chrome',
-    viewport: { width: 1280, height: 800 },
-    launchOptions: { args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] },
-  },
-  webServer: {
-    command: `pnpm exec vite --port ${PORT} --strictPort --host 127.0.0.1`,
-    url: `http://127.0.0.1:${PORT}`,
-    reuseExistingServer: true,
-  },
+  use: { screenshot: 'only-on-failure', trace: 'retain-on-failure' },
+  projects: [
+    { name: 'local', testIgnore: 'sync/**', use: { ...chrome, baseURL: `http://127.0.0.1:${LOCAL_PORT}` } },
+    ...(supabase
+      ? [
+          {
+            name: 'sync',
+            testMatch: 'sync/**/*.spec.ts',
+            // Each test drives up to three browsers; running them one at a time keeps SwiftShader responsive.
+            fullyParallel: false,
+            workers: 1,
+            use: { ...chrome, baseURL: `http://127.0.0.1:${SYNC_PORT}` },
+          },
+        ]
+      : []),
+  ],
+  webServer: [
+    {
+      command: `pnpm exec vite --port ${LOCAL_PORT} --strictPort --host 127.0.0.1`,
+      url: `http://127.0.0.1:${LOCAL_PORT}`,
+      reuseExistingServer: true,
+      // Make sure an .env.local with Supabase settings cannot leak into the local-only project.
+      env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '' },
+    },
+    ...(supabase
+      ? [
+          {
+            command: `pnpm exec vite --port ${SYNC_PORT} --strictPort --host 127.0.0.1`,
+            url: `http://127.0.0.1:${SYNC_PORT}`,
+            reuseExistingServer: true,
+            env: { VITE_SUPABASE_URL: supabase.url, VITE_SUPABASE_ANON_KEY: supabase.anonKey },
+          },
+        ]
+      : []),
+  ],
 });

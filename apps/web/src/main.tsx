@@ -1,14 +1,20 @@
-import { createLocalIdbStores } from '@coffee/adapters';
-import { createLedgerStore } from '@coffee/app';
+import { createLocalIdbStores, createSupabaseRemote } from '@coffee/adapters';
+import { createLedgerStore, startSync } from '@coffee/app';
 import { LedgerProvider } from '@coffee/ui';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { config, syncEnabled } from './config';
 import './styles.css';
 
 // Composition root: the only place that picks concrete adapters.
-const store = createLedgerStore(createLocalIdbStores());
-void store.getState().init();
+const remote = syncEnabled ? createSupabaseRemote(config.supabaseUrl!, config.supabaseAnonKey!) : null;
+// A separate database name keeps a synced profile apart from local-only data on the same origin.
+const store = createLedgerStore({ ...createLocalIdbStores(remote ? 'coffee-maker-sync' : 'coffee-maker'), remote });
+void store
+  .getState()
+  .init()
+  .then(() => startSync(store));
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

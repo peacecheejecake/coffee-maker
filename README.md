@@ -14,11 +14,12 @@ apps/
 packages/
   core/      도메인 — 이벤트, 판정, 장부 projection, 탕감 투표 (의존성 0)
   app/       유스케이스 스토어(zustand vanilla), 포트, 시계, ULID
-  adapters/  저장소 구현 (IndexedDB)
+  adapters/  저장소 구현 (IndexedDB, Supabase 원격)
   theme/     화면 문구 (저승 / 일반 말투)
   ui/        오버레이 UI — 시트, 폼, 심의함, 설정 (씬은 슬롯으로 주입)
   scene/     3D 씬 (react-three-fiber) — SceneModel만 입력으로 받음
-scripts/  폰트 서브셋 생성 등
+supabase/  스키마·RLS·RPC 마이그레이션, 로컬 스택 설정
+scripts/   폰트 서브셋 생성, 로컬 Supabase 환경 주입 등
 ```
 
 ## 개발
@@ -33,3 +34,18 @@ pnpm --filter @coffee/core coverage
 pnpm dev          # http://localhost:5173  (/sandbox: 씬 스트레스 테스트)
 pnpm e2e          # 로컬 Chrome 필요. 기준 스크린샷 갱신: pnpm --filter @coffee/web e2e:update
 ```
+
+### 멀티 디바이스 동기화 (Supabase)
+
+환경변수가 없으면 이 기기에만 저장하는 로컬 모드로 동작합니다.
+
+```sh
+pnpm supabase start -x studio,imgproxy,edge-runtime,logflare,vector,supavisor,mailpit,postgres-meta  # Docker 필요
+pnpm supabase status                  # API_URL / ANON_KEY 확인
+cp apps/web/.env.example apps/web/.env.local   # 두 값 채우기
+pnpm dev
+pnpm test:int                         # 서버 규칙·RLS·Realtime 통합 테스트
+pnpm e2e                              # Supabase가 떠 있으면 멀티 디바이스 시나리오도 실행
+```
+
+실서비스: Supabase 프로젝트를 만든 뒤 `pnpm supabase link --project-ref <ref>` → `pnpm supabase db push`, 호스팅 환경에 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` 설정. 대시보드에서 Anonymous sign-ins를 켜야 합니다.

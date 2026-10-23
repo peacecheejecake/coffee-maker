@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "e2e": "playwright test",
-    "e2e:update": "playwright test --update-snapshots"
+    "e2e:update": "playwright test --update-snapshots",
+    "e2e:ci": "playwright test --grep-invert @visual"
   },
   "dependencies": {
     "@coffee/adapters": "workspace:*",

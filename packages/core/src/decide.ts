@@ -134,7 +134,12 @@ const isCupCount = (n: number) => Number.isInteger(n) && n >= 1 && n <= MAX_CUPS
 function addPlayer(s: LedgerState, cmd: Cmd<'AddPlayer'>, ctx: DecideContext, make: Make): Decision {
   const bootstrapping = s.playerOrder.length === 0;
   const actor = s.players[ctx.actorId];
-  if (!bootstrapping && (!actor || actor.archived)) return fail('NotPermitted', 'Actor is not an active member');
+  // Someone who joined by invite registers themselves: the new player's id is their own actor id.
+  const selfJoin = !actor && cmd.id !== undefined && cmd.id === ctx.actorId;
+  if (!bootstrapping && !selfJoin && (!actor || actor.archived)) {
+    return fail('NotPermitted', 'Actor is not an active member');
+  }
+  if (selfJoin && cmd.role === 'owner' && !bootstrapping) return fail('NotPermitted', 'Self-join is as a member');
   if (!bootstrapping && cmd.role === 'owner' && actor?.role !== 'owner') {
     return fail('NotPermitted', 'Only an owner can add another owner');
   }

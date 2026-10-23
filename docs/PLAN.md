@@ -289,15 +289,30 @@ idle → pickPlayer → pickTime(default=now) → preview(judge 결과 실시간
 
 **산출물**: `supabase/migrations`, `adapters/remote-supabase`, `app/sync/SyncEngine`, 온보딩 UI
 
+> ✅ **완료 (2026-10-23)** — 동기화 엔진 단위 8개(가짜 서버), Supabase 통합 6개(RPC 검증·RLS·Realtime, 로컬 스택), Playwright 멀티 디바이스 3개(초대→합류→양방향 실시간 / 오프라인 큐 / 3기기 만장일치 탕감).
+> 구현 중 결정/변경:
+> - **쓰기는 RPC만**: 테이블 INSERT/UPDATE/DELETE는 전면 revoke, `append_events`(SECURITY DEFINER)가 이벤트별로 검증·삽입하고 결과를 개별 반환 → 한 이벤트 거절이 배치 전체를 막지 않음. RLS는 읽기 전용.
+> - **합류 = join → claim**: 초대 코드로 멤버가 된 뒤, 명단의 미배정 플레이어를 고르거나 새로 등록(도메인에 self-join `AddPlayer` 허용 추가).
+> - **Realtime 준비 시점**: `SUBSCRIBED`가 DB 변경 피드보다 먼저 와서 그 사이 삽입을 놓침(통합 테스트로 발견) → `postgres_changes` 시스템 확인 메시지(없으면 2초) 후에 "구독됨"으로 보고하고 그때 pull.
+> - per-group seq가 연속이 아니라(전역 identity) 구멍 검사 대신 **(재)구독·온라인 복귀·포그라운드 시 pull**로 누락 보충.
+> - 서버가 거절한 로컬 이벤트는 로컬에서 제거·재투영하고 토스트로 알림(예: 기한 지난 오프라인 투표).
+> - 환경변수가 없으면 **로컬 전용 모드**(M2와 동일). 데모는 로컬 전용에서만 제공.
+> - CI: `integration` 잡에서 Supabase를 띄워 통합 테스트 + e2e(`@visual` 제외) 실행.
+>
+> 남은 한계 (의도적으로 미룸):
+> - 서버는 `WaiveProposed`의 `voters`/`expiresAt`/`policy` 값을 클라이언트 계산값 그대로 신뢰 (같은 팀 내부 신뢰 전제). 서버측 투영으로 재계산하려면 Edge Function 필요 → 필요해질 때.
+> - 익명 계정 → Google/Apple 계정 연결은 M6.
+> - **실서비스 Supabase 프로젝트는 사용자 계정이 필요** — `supabase link` + `supabase db push` 후 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` 설정.
+
 ### 작업 목록
-- [ ] Supabase 프로젝트 + 마이그레이션 (테이블, 인덱스, RLS, RPC)
-- [ ] 익명 인증 + 세션 영속화
-- [ ] RPC `create_group(name, owner_player)`, `join_group(invite_code)` → membership 생성
-- [ ] 온보딩: 첫 실행 → [관할 구역 만들기] / [초대 링크로 합류] → 내 플레이어 선택(기존 미연결 플레이어) 또는 새로 만들기
-- [ ] 초대 링크 `/join/:code` + 공유 버튼 (Web Share API, 미지원 시 복사)
-- [ ] `SyncEngine`: outbox push, pull(since seq), realtime 구독, 재연결 시 gap fill
-- [ ] 연결 상태 표시 (HUD 작은 아이콘: 동기화됨 / 전송 대기 n / 오프라인)
-- [ ] 다른 사람 기록 수신 시 토스트 "민수가 하나에게 업보를 청구했습니다"
+- [x] Supabase 프로젝트 + 마이그레이션 (테이블, 인덱스, RLS, RPC)
+- [x] 익명 인증 + 세션 영속화
+- [x] RPC `create_group(name, owner_player)`, `join_group(invite_code)` → membership 생성
+- [x] 온보딩: 첫 실행 → [관할 구역 만들기] / [초대 링크로 합류] → 내 플레이어 선택(기존 미연결 플레이어) 또는 새로 만들기
+- [x] 초대 링크 `/join/:code` + 공유 버튼 (Web Share API, 미지원 시 복사)
+- [x] `SyncEngine`: outbox push, pull(since seq), realtime 구독, 재연결 시 gap fill
+- [x] 연결 상태 표시 (HUD 작은 아이콘: 동기화됨 / 전송 대기 n / 오프라인)
+- [x] 다른 사람 기록 수신 시 토스트 "민수가 하나에게 업보를 청구했습니다"
 
 ### 핵심 설계 디테일
 

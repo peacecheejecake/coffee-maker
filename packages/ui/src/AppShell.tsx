@@ -4,6 +4,8 @@ import { BallotsSheet } from './BallotsSheet';
 import { useLedger, useT } from './context';
 import { CorrectSheet } from './CorrectSheet';
 import { LedgerSheet } from './LedgerSheet';
+import { ClaimScreen } from './Claim';
+import { FeedToasts } from './Feed';
 import { Onboarding } from './Onboarding';
 import { RecordSheet } from './RecordSheet';
 import { SettingsSheet } from './SettingsSheet';
@@ -34,12 +36,14 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
   const me = useLedger((s) => s.me);
   const ledger = useLedger((s) => s.ledger);
   const nowIso = useLedger((s) => s.nowIso);
+  const sync = useLedger((s) => s.sync);
   const [sheet, setSheet] = useState<SheetState>({ kind: 'none' });
   const close = () => setSheet({ kind: 'none' });
 
   if (status === 'idle' || status === 'loading') return <div className="cm-center">{t('app.loading')}</div>;
   if (status === 'error') return <div className="cm-center">{t('app.loadError', { message: loadError ?? '' })}</div>;
-  if (!groupId || !me) return <Onboarding {...(onDemo && { onDemo })} />;
+  if (!groupId) return <Onboarding {...(onDemo && { onDemo })} />;
+  if (!me) return <ClaimScreen />;
 
   const ballots = ballotsFor(ledger, me, nowIso()).length;
   const focusId = sheet.kind === 'ledger' ? sheet.playerId : null;
@@ -69,7 +73,12 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
 
       <div className="cm-hud">
         <div className="cm-hud-top">
-          <h1 className="cm-pill">💀 {t('app.title')}</h1>
+          <h1 className="cm-pill">
+            💀 {t('app.title')}
+            {sync !== 'local' && (
+              <span className={`cm-sync is-${sync}`} role="status" aria-label={t(`sync.${sync}`)} title={t(`sync.${sync}`)} />
+            )}
+          </h1>
           <div className="cm-row">
             <button type="button" className="cm-pill cm-pill-button" onClick={() => setSheet({ kind: 'ballots' })}>
               ⚖️ {t('hud.ballots')}
@@ -126,6 +135,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
       <BallotsSheet open={sheet.kind === 'ballots'} onOpenChange={(o) => !o && close()} />
       <SettingsSheet open={sheet.kind === 'settings'} onOpenChange={(o) => !o && close()} />
       <Toasts />
+      <FeedToasts />
     </>
   );
 }

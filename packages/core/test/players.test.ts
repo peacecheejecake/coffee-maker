@@ -22,6 +22,16 @@ describe('players', () => {
     );
   });
 
+  it('a newcomer can add only themselves, as a member', () => {
+    const l = createLedger();
+    l.join(A);
+    const X = asPlayerId('X');
+    expect(l.fail(X, { type: 'AddPlayer', id: asPlayerId('Y'), name: 'y', appearance: { color: '#000' } }).code).toBe('NotPermitted');
+    expect(l.fail(X, { type: 'AddPlayer', id: X, name: 'x', appearance: { color: '#000' }, role: 'owner' }).code).toBe('NotPermitted');
+    l.run(X, { type: 'AddPlayer', id: X, name: '새내기', appearance: { color: '#000' } });
+    expect(l.state.players[X]).toMatchObject({ role: 'member', name: '새내기' });
+  });
+
   it('validates new players', () => {
     const l = createLedger();
     l.join(A, B);

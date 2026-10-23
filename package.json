@@ -12,7 +12,9 @@
     "dev": "pnpm --filter @coffee/web dev",
     "lint": "eslint .",
     "depcheck": "depcruise packages apps --config .dependency-cruiser.cjs",
-    "check": "pnpm typecheck && pnpm lint && pnpm depcheck && pnpm test"
+    "check": "pnpm typecheck && pnpm lint && pnpm depcheck && pnpm test",
+    "supabase": "supabase",
+    "test:int": "node scripts/with-supabase-env.mjs pnpm --filter @coffee/adapters test"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -22,6 +24,7 @@
     "dependency-cruiser": "^16.10.4",
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "^5.2.0",
+    "supabase": "^2.121.0",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.72.0",
     "vitest": "~3.2.7"

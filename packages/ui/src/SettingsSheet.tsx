@@ -23,6 +23,7 @@ export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenCha
     <Sheet open={open} onOpenChange={onOpenChange} title={t('settings.title')}>
       {open && (
         <div className="cm-stack">
+          <InviteSection />
           <RulesEditor />
           <PlayersEditor />
           <DeviceSection />
@@ -329,25 +330,68 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
   );
 }
 
+function InviteSection() {
+  const t = useT();
+  const { toast } = useUi();
+  const sync = useLedger((s) => s.sync);
+  const code = useLedger((s) => s.inviteCode);
+  if (sync === 'local') return null;
+  const url = code ? `${location.origin}/join/${code}` : null;
+  return (
+    <section className="cm-section" aria-labelledby="invite-h">
+      <h3 id="invite-h">{t('invite.title')}</h3>
+      {url ? (
+        <div className="cm-form">
+          <p className="cm-muted">{t('invite.body')}</p>
+          <input className="cm-input" readOnly value={url} aria-label={t('invite.title')} onFocus={(e) => e.target.select()} />
+          <div className="cm-row">
+            <button
+              type="button"
+              className="cm-button"
+              onClick={async () => {
+                await navigator.clipboard?.writeText(url);
+                toast(t('invite.copied'));
+              }}
+            >
+              {t('invite.copy')}
+            </button>
+            {'share' in navigator && (
+              <button type="button" className="cm-button" onClick={() => void navigator.share({ title: t('app.title'), url })}>
+                {t('invite.share')}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <p className="cm-muted">{t('invite.pending')}</p>
+      )}
+    </section>
+  );
+}
+
 function DeviceSection() {
   const t = useT();
   const { tone, setTone } = useUi();
   const ledger = useLedger((s) => s.ledger);
   const me = useLedger((s) => s.me);
   const setMe = useLedger((s) => s.setMe);
+  const sync = useLedger((s) => s.sync);
   const players = activePlayers(ledger);
   return (
     <section className="cm-section" aria-labelledby="device-h">
       <h3 id="device-h">{t('settings.device')}</h3>
-      <Field label={t('settings.me')}>
-        <select className="cm-input" value={me ?? ''} onChange={(e) => void setMe(e.target.value as Player['id'])}>
-          {players.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      {/* In a shared group the device user is the claimed account, not a free choice. */}
+      {sync === 'local' && (
+        <Field label={t('settings.me')}>
+          <select className="cm-input" value={me ?? ''} onChange={(e) => void setMe(e.target.value as Player['id'])}>
+            {players.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       <Field label={t('settings.tone')}>
         <Segmented<Tone>
           label={t('settings.tone')}

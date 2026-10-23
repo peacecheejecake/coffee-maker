@@ -48,6 +48,18 @@ export function createLocalIdbStores(dbName = 'coffee-maker'): { events: EventSt
           }
         });
       },
+      async put(events) {
+        await db.transaction('rw', db.events, async () => {
+          for (const event of events) {
+            const existing = await db.events.where('id').equals(event.id).first();
+            if (existing) await db.events.update(existing.localSeq!, { event });
+            else await db.events.add({ id: event.id, groupId: event.groupId, event });
+          }
+        });
+      },
+      async remove(ids) {
+        await db.events.where('id').anyOf([...ids]).delete();
+      },
     },
     meta: {
       get: async <T>(key: string) => (await db.meta.get(key))?.value as T | undefined,
