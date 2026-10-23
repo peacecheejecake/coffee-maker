@@ -101,6 +101,34 @@ export function createSupabaseRemote(
       }
     },
 
+    async savePushSubscription(groupId, sub) {
+      const { data } = await client.auth.getUser();
+      if (!data.user) throw new Error('not_authenticated');
+      check(
+        await client.from('push_subscriptions').upsert({
+          endpoint: sub.endpoint,
+          user_id: data.user.id,
+          group_id: groupId,
+          p256dh: sub.keys.p256dh,
+          auth: sub.keys.auth,
+        }),
+      );
+    },
+
+    async deletePushSubscription(endpoint) {
+      check(await client.from('push_subscriptions').delete().eq('endpoint', endpoint));
+    },
+
+    async account() {
+      const { data } = await client.auth.getUser();
+      return { anonymous: data.user?.is_anonymous ?? true, ...(data.user?.email && { email: data.user.email }) };
+    },
+
+    async linkAccount(provider) {
+      const { error } = await client.auth.linkIdentity({ provider, options: { redirectTo: location.origin } });
+      if (error) throw new Error(error.message);
+    },
+
     subscribe(groupId, onEvents, onStatus: (s: RemoteStatus) => void) {
       onStatus('connecting');
       // SUBSCRIBED arrives before the database-side change feed is live; inserts in that gap would be missed.

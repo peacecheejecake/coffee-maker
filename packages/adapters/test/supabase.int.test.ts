@@ -144,6 +144,21 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     expect(data).toBeNull();
   });
 
+  it('push subscriptions: own rows only; anonymous accounts report themselves', async () => {
+    const { a, b, groupId } = await setup();
+    const sub = { endpoint: `https://push.example/${uid()}`, keys: { p256dh: 'p', auth: 'x' } };
+    await a.savePushSubscription(groupId, sub);
+    await a.savePushSubscription(groupId, sub); // upsert
+    expect((await a.client.from('push_subscriptions').select('endpoint')).data).toEqual([{ endpoint: sub.endpoint }]);
+    expect((await b.client.from('push_subscriptions').select('endpoint')).data).toEqual([]);
+    const outsider = remote();
+    await outsider.ensureSession();
+    await expect(outsider.savePushSubscription(groupId, { ...sub, endpoint: `${sub.endpoint}x` })).rejects.toThrow();
+    await a.deletePushSubscription(sub.endpoint);
+    expect((await a.client.from('push_subscriptions').select('endpoint')).data).toEqual([]);
+    expect(await a.account()).toEqual({ anonymous: true });
+  });
+
   it('RLS: outsiders read nothing and nobody writes tables directly', async () => {
     const { a, groupId } = await setup();
     const outsider = remote();
@@ -166,10 +181,11 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     const late = ev(groupId, pa, { type: 'LateRecorded', playerId: pb });
     await a.push([late]);
     const arrived = () => received.find((e) => e.id === late.id);
-    for (let i = 0; i < 50 && !arrived(); i++) await new Promise((r) => setTimeout(r, 100));
+    // Realtime delivery can take a few seconds on a busy local stack.
+    for (let i = 0; i < 100 && !arrived(); i++) await new Promise((r) => setTimeout(r, 100));
     stop();
     // Earlier inserts may be delivered too; the store merges by id, so only arrival matters.
     expect(arrived()).toMatchObject({ id: late.id, seq: expect.any(Number), serverAt: expect.any(String) });
     expect(received.every((e) => e.groupId === groupId)).toBe(true);
-  }, 15_000);
+  }, 20_000);
 });

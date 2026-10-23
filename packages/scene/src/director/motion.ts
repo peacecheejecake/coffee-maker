@@ -41,3 +41,10 @@ export function arcPoint(
 
 /** Badge flip angle around Y over 0.6 s (one full turn, eased). */
 export const flipAngle = (t: number) => (t <= 0 || t > 0.6 ? 0 : easeInOutSine(t / 0.6) * Math.PI * 2);
+
+/** Gentle resting sway: nothing below 8 cups, growing with height up to ~1.2°. */
+export function idleSwayAngle(t: number, towerSize: number, phase: number): number {
+  if (towerSize < 8) return 0;
+  const amp = (Math.min(1.2, 0.04 * (towerSize - 7)) * Math.PI) / 180;
+  return amp * Math.sin(t * 0.9 + phase);
+}

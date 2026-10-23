@@ -1,6 +1,6 @@
-import { RoundedBox } from '@react-three/drei';
+import { Html, RoundedBox } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
-import { useMemo, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { BoxGeometry, LatheGeometry, Vector2, type Group } from 'three';
 import type { FxState } from '../director/fx';
 import { StaticInstances, trs } from '../instancing/StaticInstances';
@@ -12,17 +12,56 @@ import { hashString, seededRandom } from '../random';
  * Placeholder reaper built from primitives (DESIGN.md §2.5): a chibi reaper in a hooded robe, chin on hand,
  * sitting behind a cream desk with paper stacks. Replaced by a rigged glb in M6 behind the same position.
  */
-export function ReaperDesk({ fx }: { fx: RefObject<FxState> }) {
+export type IdleAction = 'page' | 'yawn' | 'polish' | 'glance';
+
+interface ReaperDeskProps {
+  fx: RefObject<FxState>;
+  /** Idle fidgets run only when the scene ticks idly (not for reduced motion). */
+  idle?: boolean;
+  /** 08:50–09:00: the reaper opens the roll and waits. */
+  rollCall?: boolean;
+  /** Angles (radians, around Y) toward towers worth a suspicious glance (grade B or worse). */
+  glanceAt?: number[];
+  /** Lines for the speech bubble when tapped. */
+  lines?: string[];
+}
+
+export function ReaperDesk({ fx, idle = false, rollCall = false, glanceAt = [], lines = [] }: ReaperDeskProps) {
   const desk = useRef<Group>(null);
+  const idleState = useRef<{ action: IdleAction; t0: number; glance: number; next: number } | null>(null);
+  const [bubble, setBubble] = useState<string | null>(null);
+  useEffect(() => {
+    if (!bubble) return;
+    const timer = setTimeout(() => setBubble(null), 3200);
+    return () => clearTimeout(timer);
+  }, [bubble]);
   const head = useRef<Group>(null);
   const stampArm = useRef<Group>(null);
   const penHand = useRef<Group>(null);
   const magnifier = useRef<Group>(null);
 
-  useFrame(() => {
+  useFrame(({ clock }) => {
     const action = fx.current?.reaper;
     const t = action ? fx.current!.now - action.t0 : Infinity;
-    const pose = reaperPose(action?.action ?? null, t);
+    let pose = reaperPose(action?.action ?? null, t);
+    // Between events: an occasional fidget every few seconds.
+    if (pose === REST && idle) {
+      const now = clock.elapsedTime;
+      const s = idleState.current;
+      if (!s || now > s.next) {
+        const options: IdleAction[] = glanceAt.length ? ['page', 'yawn', 'polish', 'glance'] : ['page', 'yawn', 'polish'];
+        const pick = options[Math.floor(Math.random() * options.length)]!;
+        idleState.current = {
+          action: pick,
+          t0: now,
+          glance: glanceAt[Math.floor(Math.random() * glanceAt.length)] ?? 0,
+          next: now + 5 + Math.random() * 6,
+        };
+      }
+      const cur = idleState.current!;
+      pose = idlePose(cur.action, now - cur.t0, cur.glance);
+      if (rollCall) pose = { ...pose, headX: 0.28, penX: Math.sin(now * 2) * 0.03 };
+    }
     stampArm.current?.rotation.set(pose.armX, 0, -0.5);
     if (magnifier.current) magnifier.current.visible = pose.magnifier;
     if (penHand.current) penHand.current.position.set(-0.3 + pose.penX, 1.0, 0.72 + pose.penZ);
@@ -32,7 +71,21 @@ export function ReaperDesk({ fx }: { fx: RefObject<FxState> }) {
 
   return (
     <group position={[...DESK.position]}>
-      <Reaper head={head} stampArm={stampArm} penHand={penHand} magnifier={magnifier} />
+      <group
+        onClick={(e) => {
+          e.stopPropagation();
+          if (lines.length) setBubble(lines[Math.floor(Math.random() * lines.length)]!);
+        }}
+      >
+        <Reaper head={head} stampArm={stampArm} penHand={penHand} magnifier={magnifier} />
+      </group>
+      {bubble && (
+        <Html position={[0, 2.55, -0.3]} center zIndexRange={[20, 0]}>
+          <div className="cm-bubble" role="status">
+            {bubble}
+          </div>
+        </Html>
+      )}
       <group ref={desk}>
         <Desk />
       </group>
@@ -89,6 +142,22 @@ export function reaperPose(action: NonNullable<FxState['reaper']>['action'] | nu
       return { ...REST, armX: -0.15, headX: 0.2, headY: Math.sin(t * 3) * 0.12, magnifier: t < 1.2 };
     case 'nod':
       return { ...REST, headX: Math.max(0, Math.sin(t * 10)) * 0.25 * (1 - t / 1.4) };
+  }
+}
+
+/** Idle fidgets, each about 1.5 s long, then back to rest. */
+export function idlePose(action: IdleAction, t: number, glance: number): Pose {
+  if (t < 0 || t > 1.6) return REST;
+  const bell = Math.sin(Math.min(1, t / 1.6) * Math.PI);
+  switch (action) {
+    case 'page':
+      return { ...REST, penX: -0.2 * bell, penZ: 0.05 * bell, headX: 0.12 * bell };
+    case 'yawn':
+      return { ...REST, headX: -0.3 * bell, armX: 0.5 - 0.7 * bell };
+    case 'polish':
+      return { ...REST, armX: 0.5 - 0.3 * bell + Math.sin(t * 18) * 0.06 * bell, headY: -0.25 * bell };
+    case 'glance':
+      return { ...REST, headY: glance * bell };
   }
 }
 

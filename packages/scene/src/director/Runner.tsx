@@ -98,8 +98,9 @@ export function Runner({ events, onConsumed, fx, env, reduced, timeScale, onFocu
   useFrame((_, delta) => {
     const state = fx.current;
     if (!state) return;
-    // Clamp so a long idle gap (demand frameloop) does not fast-forward animations.
-    state.now += Math.min(delta, 1 / 20) * timeScale;
+    // Clamp so a long idle gap (demand frameloop) does not fast-forward animations,
+    // but loosely enough that slow devices still finish them in about real time.
+    state.now += Math.min(delta, 1 / 10) * timeScale;
 
     active.current ??= begin(state.now);
     if (active.current && active.current.run.advance(state.now - active.current.t0, ctx())) {

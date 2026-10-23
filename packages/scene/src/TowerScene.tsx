@@ -7,6 +7,7 @@ import type { DirectorEnv } from './director/director';
 import { createFx, type FxState, type Leaving } from './director/fx';
 import { FxLayer } from './director/FxLayer';
 import { Runner, type RunnerHandle } from './director/Runner';
+import { IdleTicker, Steam, Wisps, type TimeOfDay } from './environment/Ambient';
 import { Floor, Lighting } from './environment/Environment';
 import { DESK, PEDESTAL } from './layout/dimensions';
 import { unionBounds } from './layout/framing';
@@ -15,6 +16,7 @@ import type { SceneEvent, SceneModel } from './model';
 import { ReaperDesk } from './reaper/ReaperDesk';
 import { BallotPlaques, PedestalLotuses } from './tower/BallotPlaques';
 import { Tower } from './tower/Tower';
+import { Decorations } from './tower/Decorations';
 import { TowerFixtures } from './tower/TowerFixtures';
 
 export interface TowerSceneProps {
@@ -34,6 +36,14 @@ export interface TowerSceneProps {
   reducedMotion?: boolean;
   /** Animation speed multiplier (sandbox). */
   timeScale?: number;
+  /** Lighting preset; the app derives it from the group's local time. */
+  timeOfDay?: TimeOfDay;
+  /** Just before start time: the reaper reads the roll. */
+  rollCall?: boolean;
+  /** What the reaper says when tapped. */
+  reaperLines?: string[];
+  /** Font for a given piece of 3D text (lets rare characters fall back to a fuller font). */
+  resolveFont?: (text: string) => string;
   /** "demand" (default) renders only when something changes; "always" for profiling. */
   frameloop?: 'demand' | 'always';
   /** Extra scene children, e.g. dev probes. */
@@ -55,6 +65,10 @@ export function TowerScene({
   onSfx,
   reducedMotion,
   timeScale = 1,
+  timeOfDay = 'day',
+  rollCall = false,
+  reaperLines,
+  resolveFont,
   frameloop = 'demand',
   children,
 }: TowerSceneProps) {
@@ -115,6 +129,16 @@ export function TowerScene({
   }, [placed, resting, onSfx]);
 
   const consume = useCallback((ids: string[]) => onEventsConsumed?.(ids), [onEventsConsumed]);
+  const idle = !reduced;
+  const fontFor = useCallback((text: string) => resolveFont?.(text) ?? fontUrl, [resolveFont, fontUrl]);
+  // The reaper eyes debtors of grade B or worse (DESIGN.md §1.3).
+  const glanceAt = useMemo(
+    () =>
+      placed
+        .filter((p) => p.tower.grade === 'B' || p.tower.grade === 'C' || p.tower.grade === 'D')
+        .map((p) => Math.atan2(p.slot.x - DESK.position[0], p.slot.z - DESK.position[2])),
+    [placed],
+  );
 
   const focusId = fxFocus ?? model.focusId;
   // Contact shadows only depend on what stands on the floor; re-render them when that changes, not every frame.
@@ -154,15 +178,23 @@ export function TowerScene({
         gl={{ alpha: true, antialias: true }}
         onPointerMissed={() => select(null)}
       >
-        <Lighting />
+        <Lighting timeOfDay={timeOfDay} />
         <Floor shadowKey={shadowKey} />
-        <ReaperDesk fx={fx} />
-        <CupInstances towers={placed} fx={fx} hidden={hidden} />
+        <ReaperDesk fx={fx} idle={idle} rollCall={rollCall} glanceAt={glanceAt} {...(reaperLines && { lines: reaperLines })} />
+        <CupInstances towers={placed} fx={fx} hidden={hidden} idleSway={idle} />
         <TowerFixtures towers={placed} fx={fx} />
         <BallotPlaques towers={placed} />
         <PedestalLotuses towers={placed} />
+        <Decorations towers={placed} />
+        {idle && (
+          <>
+            <Wisps />
+            <Steam towers={placed} />
+          </>
+        )}
+        <IdleTicker enabled={idle && frameloop === 'demand'} />
         {placed.map((p) => (
-          <Tower key={p.tower.id} placed={p} fontUrl={fontUrl} onSelect={select} />
+          <Tower key={p.tower.id} placed={p} fontUrl={fontFor(p.tower.name)} onSelect={select} />
         ))}
         <FxLayer fx={fx} ghosts={ghosts} />
         <Runner

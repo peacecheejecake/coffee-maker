@@ -34,6 +34,27 @@ export interface RemoteSync {
   /** Confirmed events with seq greater than `afterSeq`, in seq order. */
   pull(groupId: GroupId, afterSeq: number): Promise<LedgerEvent[]>;
   subscribe(groupId: GroupId, onEvents: (events: LedgerEvent[]) => void, onStatus: (s: RemoteStatus) => void): () => void;
+  savePushSubscription(groupId: GroupId, subscription: PushSubscriptionData): Promise<void>;
+  deletePushSubscription(endpoint: string): Promise<void>;
+  /** Anonymous accounts vanish with the browser's data; linking makes them recoverable. */
+  account(): Promise<{ anonymous: boolean; email?: string }>;
+  /** Starts an OAuth redirect that attaches a provider identity to the current (anonymous) user. */
+  linkAccount(provider: 'google' | 'apple'): Promise<void>;
+}
+
+export interface PushSubscriptionData {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+}
+
+/** Browser push plumbing (service worker + Push API), injected by the app shell. */
+export interface PushPort {
+  supported(): boolean;
+  permission(): NotificationPermission | 'unsupported';
+  subscribe(): Promise<PushSubscriptionData | null>;
+  /** Returns the endpoint that was removed, if any. */
+  unsubscribe(): Promise<string | null>;
+  current(): Promise<string | null>;
 }
 
 /** Small device-local settings: active group, who is using this device, UI tone. */

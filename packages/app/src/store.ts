@@ -24,6 +24,7 @@ import {
   type Clock,
   type EventStore,
   type MetaStore,
+  type PushPort,
   type PushResult,
   type RemoteSync,
 } from './ports';
@@ -100,12 +101,18 @@ export interface LedgerActions {
   /** Stores an evidence photo for the active group. Null when photos are unsupported. */
   putEvidence(blob: Blob): Promise<string | null>;
   evidenceUrl(assetId: string): Promise<string | null>;
+
+  /** Whether this device currently receives notifications for the group. */
+  notificationsEnabled(): Promise<boolean>;
+  setNotifications(on: boolean): Promise<boolean>;
 }
 
 export type LedgerStore = StoreApi<LedgerStoreState & LedgerActions> & {
   remote: RemoteSync | null;
   /** True when evidence photos can be stored. */
   supportsEvidence: boolean;
+  /** True when this build can deliver notifications (remote + push configured + browser support). */
+  supportsPush: boolean;
   /** Makes sure a group created offline exists on the server. False for local-only groups. */
   ensureRegistered(): Promise<boolean>;
 };
@@ -117,6 +124,8 @@ export interface LedgerStoreDeps {
   remote?: RemoteSync | null;
   /** Evidence photo storage; without it photos are not offered. */
   assets?: AssetStore | null;
+  /** Web push; only meaningful together with a remote. */
+  push?: PushPort | null;
   clock?: Clock;
   newId?: () => string;
 }
@@ -137,6 +146,7 @@ export function createLedgerStore({
   meta,
   remote = null,
   assets = null,
+  push = null,
   clock = systemClock,
   newId = () => ulid(clock.now().getTime()),
 }: LedgerStoreDeps): LedgerStore {
@@ -385,6 +395,25 @@ export function createLedgerStore({
         return assets && groupId ? assets.url(groupId, assetId) : null;
       },
 
+      async notificationsEnabled() {
+        return !!(push?.supported() && push.permission() === 'granted' && (await push.current()));
+      },
+
+      async setNotifications(on) {
+        const { groupId } = get();
+        if (!remote || !push?.supported() || !groupId) return false;
+        if (!on) {
+          const endpoint = await push.unsubscribe();
+          if (endpoint) await remote.deletePushSubscription(endpoint);
+          return false;
+        }
+        const sub = await push.subscribe();
+        if (!sub) return false;
+        await remote.ensureSession();
+        await remote.savePushSubscription(groupId, sub);
+        return true;
+      },
+
       drainRejections() {
         const r = get().rejections;
         if (r.length) set({ rejections: [] });
@@ -412,5 +441,10 @@ export function createLedgerStore({
     return true;
   };
 
-  return Object.assign(store, { remote, supportsEvidence: assets !== null, ensureRegistered });
+  return Object.assign(store, {
+    remote,
+    supportsEvidence: assets !== null,
+    supportsPush: remote !== null && !!push?.supported(),
+    ensureRegistered,
+  });
 }

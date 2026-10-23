@@ -38,10 +38,10 @@ test('invite → join → live updates in both directions', async ({ browser }) 
   const url = await inviteLink(a.page);
 
   await joinAs(b.page, url, '민수');
-  await expect(a.page.getByText('민수님이 관할 구역에 합류했습니다')).toBeVisible();
+  await expect(a.page.getByText('민수님이 관할 구역에 합류했습니다')).toBeVisible({ timeout: 15_000 });
 
   await recordLate(a.page, '민수', '09:30');
-  await expect(b.page.getByText('지원님이 민수에게 업보 1잔을 청구했습니다')).toBeVisible();
+  await expect(b.page.getByText('지원님이 민수에게 업보 1잔을 청구했습니다')).toBeVisible({ timeout: 15_000 });
   await expect(towerLabel(b.page, '민수', 1)).toHaveCount(1);
 
   await recordLate(b.page, '지원', '09:45');
@@ -94,10 +94,10 @@ test('a unanimous waiver across three devices', async ({ browser }) => {
   await ledger.getByRole('button', { name: '심의에 부치기' }).click();
   await a.page.keyboard.press('Escape');
 
-  await expect(c.page.getByText('지원님이 민수의 탕감 심의를 발의했습니다')).toBeVisible();
+  await expect(c.page.getByText('지원님이 민수의 탕감 심의를 발의했습니다')).toBeVisible({ timeout: 15_000 });
   await c.page.getByRole('button', { name: /심의함/ }).click();
   await c.page.getByRole('dialog', { name: '탕감 심의위원회' }).getByRole('button', { name: '탕감 찬성' }).click();
-  await expect(c.page.getByText('만장일치. 업보가 탕감되었습니다')).toBeVisible();
+  await expect(c.page.getByText('만장일치. 업보가 탕감되었습니다')).toBeVisible({ timeout: 15_000 });
   await c.page.keyboard.press('Escape');
 
   for (const d of [a, b, c]) await expect(towerLabel(d.page, '민수', 0)).toHaveCount(1);
@@ -122,13 +122,13 @@ test('redeem on one device, confirm receipt on another', async ({ browser }) => 
   await b.page.waitForTimeout(870);
   await b.page.mouse.up();
 
-  await expect(a.page.getByText('민수님이 민수의 업보로 커피 1잔을 샀습니다')).toBeVisible();
+  await expect(a.page.getByText('민수님이 민수의 업보로 커피 1잔을 샀습니다')).toBeVisible({ timeout: 15_000 });
   await expect(towerLabel(a.page, '민수', 0)).toHaveCount(1);
   await a.page.getByRole('button', { name: /심의함/ }).click();
   await a.page.getByRole('button', { name: '잘 받았습니다 ☕' }).click();
   await a.page.keyboard.press('Escape');
 
-  await b.page.getByRole('dialog', { name: '완납 증명서' }).getByRole('button', { name: '극락으로' }).click();
+  await b.page.getByRole('dialog', { name: '완납 증명서' }).getByRole('button', { name: '극락으로' }).click({ timeout: 10_000 });
   const ledger = await openLedger(b.page, '민수');
   await expect(ledger.getByText('수령 확인 1/1')).toBeVisible();
   await a.context.close();

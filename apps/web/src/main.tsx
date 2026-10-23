@@ -5,6 +5,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { config, syncEnabled } from './config';
+import { createBrowserPush } from './push';
 import './styles.css';
 
 // Composition root: the only place that picks concrete adapters.
@@ -16,11 +17,17 @@ const store = createLedgerStore({
   remote,
   // Shared groups keep evidence photos on the server so every member can see them.
   assets: remote ? createSupabaseAssets(remote.client) : local.assets,
+  push: remote ? createBrowserPush(config.vapidPublicKey) : null,
 });
 void store
   .getState()
   .init()
   .then(() => startSync(store));
+
+// Service worker: offline app shell + push notifications. Production only (dev serves modules unbundled).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  void import('virtual:pwa-register').then(({ registerSW }) => registerSW({ immediate: true }));
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

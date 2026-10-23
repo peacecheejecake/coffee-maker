@@ -2,13 +2,15 @@ import { ContactShadows } from '@react-three/drei';
 import { useMemo } from 'react';
 import { CanvasTexture } from 'three';
 import { PALETTE } from '../palette';
+import { LIGHTS, type TimeOfDay } from './Ambient';
 
-export function Lighting() {
+export function Lighting({ timeOfDay = 'day' }: { timeOfDay?: TimeOfDay }) {
+  const l = LIGHTS[timeOfDay];
   return (
     <>
-      <hemisphereLight args={[PALETTE.sky, PALETTE.ground, 0.9]} />
-      <directionalLight color={PALETTE.keyLight} intensity={2.2} position={[-4, 9, 7]} />
-      <directionalLight color={PALETTE.rimLight} intensity={1.6} position={[3, 5, -8]} />
+      <hemisphereLight args={[l.sky, l.ground, l.hemi]} />
+      <directionalLight color={l.key} intensity={l.keyIntensity} position={[-4, 9, 7]} />
+      <directionalLight color={PALETTE.rimLight} intensity={l.rim} position={[3, 5, -8]} />
       <ambientLight intensity={0.15} />
     </>
   );

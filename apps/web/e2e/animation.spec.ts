@@ -3,6 +3,8 @@ import { addPlayer, createGroup, openLedger, recordLate } from './helpers';
 
 const scene = (page: Page) => page.getByTestId('scene');
 
+test.use({ contextOptions: { reducedMotion: 'no-preference' } });
+
 test('recording plays the drop; a tap skips it instead of selecting a tower', async ({ page }) => {
   await createGroup(page, '지원');
   await addPlayer(page, '민수');
@@ -26,6 +28,7 @@ test('animations finish on their own', async ({ page }) => {
 
 test('reduced motion keeps animations short', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
+  // (re-applied explicitly: this file opts the other tests into full motion)
   await createGroup(page, '지원');
   await addPlayer(page, '민수');
   const started = Date.now();

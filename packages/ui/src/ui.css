@@ -911,3 +911,20 @@ input[type='color'] {
     animation: none;
   }
 }
+
+/* ── Reaper speech bubble (rendered inside the 3D scene via drei Html) ── */
+
+.cm-bubble {
+  width: max-content;
+  max-width: 220px;
+  word-break: keep-all;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: #f5ecd9;
+  color: #2a2738;
+  font: 600 14px/1.45 Pretendard, system-ui, sans-serif;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.35);
+  pointer-events: none;
+  white-space: normal;
+  animation: cm-rise 180ms ease-out;
+}

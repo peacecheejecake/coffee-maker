@@ -1,11 +1,16 @@
-import { TowerScene } from '@coffee/scene';
-import { AppShell, useLedger, type SceneSlotProps } from '@coffee/ui';
-import { useCallback, useMemo, useState } from 'react';
+import { currentRuleset, toMinutes } from '@coffee/core';
+import type { TimeOfDay } from '@coffee/scene';
+import { AppShell, useLedger, useUi, type SceneSlotProps } from '@coffee/ui';
+import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+
 import { createDemoLedger } from './demo/demoLedger';
 import { syncEnabled } from './config';
-import { FONT_URL } from './fonts';
+import { FONT_URL, fontFor } from './fonts';
 import { toSceneModel } from './model/toSceneModel';
 import { useSceneEvents } from './model/useSceneEvents';
+
+// three.js + R3F are most of the bundle; the HUD and sheets work while the scene streams in.
+const TowerScene = lazy(() => import('@coffee/scene').then((m) => ({ default: m.TowerScene })));
 
 export function Home() {
   const importGroup = useLedger((s) => s.importGroup);
@@ -32,16 +37,31 @@ function SceneView({ focusId, focusDesk, onSelectTower }: SceneSlotProps) {
   );
   const { queue, consume } = useSceneEvents(groupId, ledger, events);
   const [animating, setAnimating] = useState(false);
+  const { sfx, t } = useUi();
+  const minutes = toMinutes(wallNow().hhmm);
+  const start = toMinutes(currentRuleset(ledger).defaultStartTime);
+  const timeOfDay: TimeOfDay = minutes < 11 * 60 ? 'morning' : minutes < 17 * 60 ? 'day' : 'evening';
+  const reaperLines = useMemo(
+    () => (['reaper.1', 'reaper.2', 'reaper.3', 'reaper.4', 'reaper.5', 'reaper.6'] as const).map((k) => t(k)),
+    [t],
+  );
   return (
     <div className="cm-stage" aria-busy={animating} data-testid="scene">
-      <TowerScene
-        model={model}
-        fontUrl={FONT_URL}
-        onSelectTower={onSelectTower}
-        events={queue}
-        onEventsConsumed={consume}
-        onAnimatingChange={setAnimating}
-      />
+      <Suspense fallback={<div className="scene-loading" aria-hidden />}>
+        <TowerScene
+          model={model}
+          fontUrl={FONT_URL}
+          onSelectTower={onSelectTower}
+          events={queue}
+          onEventsConsumed={consume}
+          onAnimatingChange={setAnimating}
+          onSfx={sfx}
+          timeOfDay={timeOfDay}
+          rollCall={minutes >= start - 10 && minutes < start}
+          reaperLines={reaperLines}
+          resolveFont={fontFor}
+        />
+      </Suspense>
     </div>
   );
 }

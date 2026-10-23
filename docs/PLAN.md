@@ -526,6 +526,27 @@ seq(
 
 **목표**: 정식 아트와 사운드를 입히고, 설치 가능한 앱(PWA)으로 출시 가능한 품질.
 
+> ✅ **완료 (2026-10-23, 아트 제외)** — 통합 +4(푸시 구독 RLS·익명 계정), 알림 규칙 3, 폰트 2, Playwright +2(axe 접근성 감사, PWA 오프라인).
+> 완료한 것:
+> - **PWA**: `injectManifest` 서비스 워커(오프라인 앱 셸 + 3D 청크·폰트 프리캐시 + 푸시 핸들러), 매니페스트, 아이콘(SVG → Chrome으로 PNG 렌더, `scripts/render-icons.mjs`). 오프라인 e2e 통과.
+> - **번들**: 씬 지연 로드 → 초기 JS **208KB gzip**(예산 350KB), 3D 청크 308KB 별도.
+> - **사운드**: 음원 파일 없이 WebAudio로 합성(도장·휙·착지·의사봉·반짝·승천·찢기), 설정에서 끄기.
+> - **환경/유휴**: 실제 시각 기반 조명 3종, 반딧불 영혼, 김, 높은 탑의 잔잔한 흔들림. **적응형 유휴 틱**(기본 15fps, 프레임이 느리면 최대 1fps까지 자동 감속 — 저사양 기기 보호, e2e에서 발견).
+> - **묵은 업보**: 거미줄(7일+), 유령 컵(30일+), R.I.P. 묘비(100일+).
+> - **마일스톤/상황**: CAUTION 테이프(5), 깃발(15), 구름(20), 1위 왕관, D등급 쇠사슬+지옥불, 연속 지각 3일+ 불꽃, 연속 정시 3일+ 후광.
+> - **저승사자**: 유휴 동작(서류 넘기기·하품·낫 닦기·채무자 힐끗), 9시 직전 명부 읽기, 탭하면 말풍선(테마 대사).
+> - **폰트 폴백**: KS X 1001 밖 글자가 있는 이름만 전체 Pretendard(1.1MB, 프리캐시 제외) 사용.
+> - **웹 푸시**: `push_subscriptions`(본인 행만) + 이벤트 INSERT 트리거 → `notify` Edge Function(늦은 사람/투표권자/커피 수령인에게, 만료 구독 정리). 알림 규칙은 순수 TS로 분리해 단위 테스트.
+> - **계정 연결**: 익명 계정에 Google/Apple 연결(`linkIdentity`), `enable_manual_linking` 활성화.
+> - **접근성**: axe(WCAG A/AA serious·critical) 위반 0 — 온보딩·메인·각 시트.
+> - **Node 22 필요**: PWA 빌드 체인이 Node 20.19+를 요구 → `.nvmrc` 22, `engines >=20.19`.
+>
+> 하지 못한 것 / 남은 일:
+> - **정식 3D 에셋(Blender 리깅·애니메이션 glb)**: 이 환경에 Blender가 없어 제작 불가. 절차적 저승사자를 유지하고 포즈·유휴 동작을 코드로 구현함. glb로 교체하려면 `ReaperDesk`를 같은 props(fx·idle·rollCall)로 구현하는 컴포넌트로 바꾸면 됨.
+> - **푸시의 실제 발송은 미검증**: 로컬 스택에서 edge runtime을 끈 상태라 함수 실행·브라우저 수신까지는 확인 못 함. 운영 설정 필요 — VAPID 키 생성, 함수 배포(`supabase functions deploy notify`)와 시크릿(`NOTIFY_SECRET`, `VAPID_*`), `notify_config` 행 입력, `VITE_VAPID_PUBLIC_KEY`.
+> - **Google/Apple 로그인**: 각 제공자 OAuth 클라이언트 등록·Supabase 대시보드 설정 필요(코드 경로만 구현).
+> - Lighthouse 점수 측정은 하지 않음(대신 번들 예산·axe·오프라인 e2e로 검증).
+
 ### 작업 목록
 - [ ] **3D 에셋 (Blender)**
   - 저승사자: 리깅 + 클립 `idle_think`(레퍼런스 턱괴기), `idle_page`, `yawn`, `polish_scythe`, `stamp`, `nod`, `tear`, `inspect`, `wave`, `adjust_glasses`, `gavel` / 10–15k tris

@@ -24,7 +24,7 @@ scripts/   폰트 서브셋 생성, 로컬 Supabase 환경 주입 등
 
 ## 개발
 
-Node 18.18+ / pnpm
+Node 22 (`.nvmrc`, 최소 20.19) / pnpm
 
 ```sh
 pnpm install
@@ -46,6 +46,16 @@ cp apps/web/.env.example apps/web/.env.local   # 두 값 채우기
 pnpm dev
 pnpm test:int                         # 서버 규칙·RLS·Realtime 통합 테스트
 pnpm e2e                              # Supabase가 떠 있으면 멀티 디바이스 시나리오도 실행
+```
+
+### 알림 (선택)
+
+`npx web-push generate-vapid-keys`로 키를 만들고, 공개키는 `VITE_VAPID_PUBLIC_KEY`에, 비공개키는 Edge Function 시크릿에 넣습니다.
+
+```sh
+pnpm supabase functions deploy notify
+pnpm supabase secrets set NOTIFY_SECRET=<임의 문자열> VAPID_PUBLIC_KEY=<…> VAPID_PRIVATE_KEY=<…> VAPID_SUBJECT=mailto:<관리자 메일>
+# SQL: insert into public.notify_config (id, url, secret) values (1, 'https://<ref>.functions.supabase.co/notify', '<NOTIFY_SECRET>');
 ```
 
 실서비스: Supabase 프로젝트를 만든 뒤 `pnpm supabase link --project-ref <ref>` → `pnpm supabase db push`, 호스팅 환경에 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` 설정. 대시보드에서 Anonymous sign-ins를 켜야 합니다.

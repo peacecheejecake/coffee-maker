@@ -31,7 +31,8 @@ test('redeem with a clean stamp, earn the certificate, recipient confirms receip
   await expect(page.getByText('민수의 업보 1잔 상환 완료')).toBeVisible();
 
   const certificate = page.getByRole('dialog', { name: '완납 증명서' });
-  await expect(certificate.getByRole('img', { name: '완납 증명서' })).toBeVisible();
+  // Shown after the ascend animation (3.2 s) plus rendering.
+  await expect(certificate.getByRole('img', { name: '완납 증명서' })).toBeVisible({ timeout: 10_000 });
   await certificate.getByRole('button', { name: '극락으로' }).click();
 
   const ledger = await openLedger(page, '민수');
@@ -62,7 +63,7 @@ test('a quick tap gives a faint stamp; the recorder can revert within ten minute
   await sheet.getByRole('button', { name: /날인하러 가기/ }).click();
   await holdStamp(page, 120);
   await expect(page.getByText('민수의 업보 1잔 상환 완료')).toBeVisible();
-  await page.getByRole('dialog', { name: '완납 증명서' }).getByRole('button', { name: '극락으로' }).click();
+  await page.getByRole('dialog', { name: '완납 증명서' }).getByRole('button', { name: '극락으로' }).click({ timeout: 10_000 });
 
   const ledger = await openLedger(page, '민수');
   await expect(ledger.getByRole('img', { name: '흐릿한 날인' })).toBeVisible();

@@ -20,6 +20,15 @@ export async function settle(page: Page) {
   await page.waitForTimeout(3500);
 }
 
+/**
+ * Screenshot tests need a still scene: fixed wall clock (lighting follows the time of day) and reduced
+ * motion (no idle steam, wisps or sway).
+ */
+export async function stillScene(page: Page) {
+  await page.clock.install({ time: new Date('2026-10-23T01:00:00Z') });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+}
+
 export async function startDemo(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: '데모 장부로 둘러보기' }).click();

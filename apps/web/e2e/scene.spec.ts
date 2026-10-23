@@ -1,7 +1,8 @@
 import { expect, test } from '@playwright/test';
-import { settle, startDemo, trackErrors } from './helpers';
+import { settle, startDemo, stillScene, trackErrors } from './helpers';
 
 test('demo ledger renders without errors @visual', async ({ page }) => {
+  await stillScene(page);
   const errors = trackErrors(page);
   await startDemo(page);
   await expect(page.getByRole('heading', { name: /저승 커피 채권관리공사/ })).toBeVisible();
@@ -21,6 +22,7 @@ test('tapping a tower focuses it and opens the ledger; closing returns to overvi
 });
 
 test('mobile portrait framing @visual', async ({ page }) => {
+  await stillScene(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await startDemo(page);
   await expect(page).toHaveScreenshot('home-mobile.png');
@@ -32,8 +34,9 @@ for (const [name, query] of [
   ['sandbox-20x40', 'players=20&maxCups=40&uniform=1'],
 ] as const) {
   test(`sandbox ${name} @visual`, async ({ page }) => {
+    await stillScene(page);
     const errors = trackErrors(page);
-    await page.goto(`/sandbox?hud=0&${query}`);
+    await page.goto(`/sandbox?hud=0&reduced=1&${query}`);
     await settle(page);
     expect(errors).toEqual([]);
     await expect(page).toHaveScreenshot(`${name}.png`, { mask: [page.getByTestId('probe')] });

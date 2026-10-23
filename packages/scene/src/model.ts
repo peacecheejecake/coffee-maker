@@ -27,6 +27,8 @@ export interface TowerView {
   ballot?: 'approve' | 'reject' | null;
   /** Paid everything off at least once and owes nothing now: a lotus blooms on the pedestal. */
   lotus?: boolean;
+  /** Latest run of recorded days: 3+ late days set the pedestal on fire, 3+ on-time days sparkle. */
+  streak?: { kind: 'late' | 'onTime' | 'none'; count: number };
 }
 
 export interface SceneModel {

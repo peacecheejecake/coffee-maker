@@ -11,8 +11,8 @@ import {
   type Ruleset,
 } from '@coffee/core';
 import type { Tone } from '@coffee/theme';
-import { useMemo, useState } from 'react';
-import { useCommand, useLedger, useT, useUi } from './context';
+import { useEffect, useMemo, useState } from 'react';
+import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
 import { ColorDot, Field, Segmented, Sheet, Stepper } from './primitives';
 
 export const PALETTE_CHOICES = ['#e57373', '#64b5f6', '#81c784', '#ffb74d', '#ba68c8', '#4dd0e1', '#f06292', '#aed581', '#ffd54f', '#90a4ae'];
@@ -24,6 +24,7 @@ export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenCha
       {open && (
         <div className="cm-stack">
           <InviteSection />
+          <AccountSection />
           <RulesEditor />
           <PlayersEditor />
           <DeviceSection />
@@ -371,7 +372,7 @@ function InviteSection() {
 
 function DeviceSection() {
   const t = useT();
-  const { tone, setTone } = useUi();
+  const { tone, setTone, sound, setSound } = useUi();
   const ledger = useLedger((s) => s.ledger);
   const me = useLedger((s) => s.me);
   const setMe = useLedger((s) => s.setMe);
@@ -403,6 +404,18 @@ function DeviceSection() {
           onChange={setTone}
         />
       </Field>
+      <NotificationsField />
+      <Field label={t('settings.sound')}>
+        <Segmented<'on' | 'off'>
+          label={t('settings.sound')}
+          value={sound ? 'on' : 'off'}
+          options={[
+            { value: 'on', label: t('settings.sound.on') },
+            { value: 'off', label: t('settings.sound.off') },
+          ]}
+          onChange={(v) => setSound(v === 'on')}
+        />
+      </Field>
     </section>
   );
 }
@@ -410,4 +423,82 @@ function DeviceSection() {
 function addMinutes(hhmm: string, minutes: number): string {
   const total = Math.min(23 * 60 + 59, toMinutes(hhmm) + minutes);
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+function NotificationsField() {
+  const t = useT();
+  const { toast } = useUi();
+  const api = useStoreApi();
+  const sync = useLedger((s) => s.sync);
+  const [on, setOn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void api.getState().notificationsEnabled().then(setOn);
+  }, [api]);
+  if (sync === 'local' || !api.supportsPush) return null;
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const standalone = matchMedia('(display-mode: standalone)').matches;
+  return (
+    <Field label={t('settings.notifications')} hint={ios && !standalone ? t('settings.notifications.ios') : t('settings.notifications.hint')}>
+      <Segmented<'on' | 'off'>
+        label={t('settings.notifications')}
+        value={on ? 'on' : 'off'}
+        disabled={busy}
+        options={[
+          { value: 'on', label: t('settings.notifications.on') },
+          { value: 'off', label: t('settings.notifications.off') },
+        ]}
+        onChange={async (v) => {
+          setBusy(true);
+          try {
+            const result = await api.getState().setNotifications(v === 'on');
+            setOn(result);
+            if (v === 'on' && !result) toast(t('settings.notifications.denied'), 'error');
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </Field>
+  );
+}
+
+function AccountSection() {
+  const t = useT();
+  const { toast } = useUi();
+  const api = useStoreApi();
+  const sync = useLedger((s) => s.sync);
+  const [account, setAccount] = useState<{ anonymous: boolean; email?: string } | null>(null);
+  useEffect(() => {
+    if (sync === 'local' || !api.remote) return;
+    void api.remote.account().then(setAccount, () => setAccount(null));
+  }, [api, sync]);
+  if (sync === 'local' || !api.remote || !account) return null;
+  const link = async (provider: 'google' | 'apple') => {
+    try {
+      await api.remote!.linkAccount(provider);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error');
+    }
+  };
+  return (
+    <section className="cm-section" aria-labelledby="account-h">
+      <h3 id="account-h">{t('settings.account')}</h3>
+      {account.anonymous ? (
+        <div className="cm-form">
+          <p className="cm-muted">{t('settings.account.anonymous')}</p>
+          <div className="cm-row cm-wrap">
+            <button type="button" className="cm-button" onClick={() => void link('google')}>
+              {t('settings.account.google')}
+            </button>
+            <button type="button" className="cm-button" onClick={() => void link('apple')}>
+              {t('settings.account.apple')}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="cm-muted">{t('settings.account.linked', { email: account.email ?? '' })}</p>
+      )}
+    </section>
+  );
 }

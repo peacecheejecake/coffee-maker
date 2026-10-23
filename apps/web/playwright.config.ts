@@ -3,6 +3,7 @@ import { defineConfig } from '@playwright/test';
 
 const LOCAL_PORT = 5181;
 const SYNC_PORT = 5182;
+const PWA_PORT = 5183;
 
 /** Local Supabase connection, if `pnpm supabase start` is running. Sync tests are skipped otherwise. */
 function localSupabase(): { url: string; anonKey: string } | null {
@@ -35,9 +36,13 @@ export default defineConfig({
   // The first run after a dependency change waits for Vite's pre-bundling.
   retries: 1,
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01 } },
-  use: { screenshot: 'only-on-failure', trace: 'retain-on-failure' },
+  // Idle decoration (steam, wisps, sway) is irrelevant to most flows and heavy under software rendering;
+  // tests that are about motion opt back in with test.use({ contextOptions: { reducedMotion: 'no-preference' } }).
+  use: { screenshot: 'only-on-failure', trace: 'retain-on-failure', contextOptions: { reducedMotion: 'reduce' } },
   projects: [
-    { name: 'local', testIgnore: 'sync/**', use: { ...chrome, baseURL: `http://127.0.0.1:${LOCAL_PORT}` } },
+    { name: 'local', testIgnore: ['sync/**', 'pwa/**'], use: { ...chrome, baseURL: `http://127.0.0.1:${LOCAL_PORT}` } },
+    // Production build + preview: service worker, manifest, offline.
+    { name: 'pwa', testMatch: 'pwa/**/*.spec.ts', use: { ...chrome, baseURL: `http://127.0.0.1:${PWA_PORT}` } },
     ...(supabase
       ? [
           {
@@ -52,6 +57,13 @@ export default defineConfig({
       : []),
   ],
   webServer: [
+    {
+      command: `pnpm exec vite build && pnpm exec vite preview --port ${PWA_PORT} --strictPort --host 127.0.0.1`,
+      url: `http://127.0.0.1:${PWA_PORT}`,
+      reuseExistingServer: true,
+      timeout: 180_000,
+      env: { VITE_SUPABASE_URL: '', VITE_SUPABASE_ANON_KEY: '' },
+    },
     {
       command: `pnpm exec vite --port ${LOCAL_PORT} --strictPort --host 127.0.0.1`,
       url: `http://127.0.0.1:${LOCAL_PORT}`,

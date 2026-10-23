@@ -58,6 +58,10 @@ export class FakeServer {
         await guard();
         return server.events.filter((e) => e.groupId === groupId && e.seq! > after);
       },
+      savePushSubscription: async () => {},
+      deletePushSubscription: async () => {},
+      account: async () => ({ anonymous: true }),
+      linkAccount: async () => {},
       subscribe(groupId, cb, onStatus: (s: RemoteStatus) => void) {
         const sub = { groupId, cb: (e: LedgerEvent[]) => net.online && cb(e) };
         server.subs.add(sub);

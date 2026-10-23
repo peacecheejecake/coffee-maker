@@ -4,6 +4,7 @@ import {
   cupAge,
   outstanding,
   playerStats,
+  streak,
   type EventId,
   type LedgerState,
   type PlayerId,
@@ -45,6 +46,7 @@ export function toSceneModel(state: LedgerState, today: WorkDate, focusId: strin
         crowned: top > 0 && cups.length === top,
         ballot: ballotOf(p.id),
         lotus: cups.length === 0 && playerStats(state, p.id).cupsRedeemed > 0,
+        streak: streak(state, p.id),
       };
     }),
   };
