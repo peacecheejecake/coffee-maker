@@ -32,7 +32,7 @@ export function RedeemSheet({ open, onOpenChange }: { open: boolean; onOpenChang
 
 function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) {
   const t = useT();
-  const { toast } = useUi();
+  const { toast, platform } = useUi();
   const run = useCommand();
   const api = useStoreApi();
   const ledger = useLedger((s) => s.ledger);
@@ -49,7 +49,7 @@ function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) 
   const others = useMemo(() => players.filter((p) => p.id !== debtorId), [players, debtorId]);
   const [recipients, setRecipients] = useState<PlayerId[]>([]);
   const [order, setOrder] = useState<RedeemOrder>('newest');
-  const [photo, setPhoto] = useState<File | null>(null);
+  const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [step, setStep] = useState<'form' | 'stamp'>('form');
   const [busy, setBusy] = useState(false);
@@ -185,6 +185,10 @@ function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) 
                 {t('redeem.evidenceRemove')}
               </button>
             </div>
+          ) : platform.pickPhoto ? (
+            <button type="button" className="cm-button" onClick={async () => setPhoto(await platform.pickPhoto!())}>
+              📷 {t('redeem.evidence')}
+            </button>
           ) : (
             <input
               type="file"

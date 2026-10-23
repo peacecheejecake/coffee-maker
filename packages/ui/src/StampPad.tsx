@@ -1,6 +1,6 @@
 import type { StampQuality } from '@coffee/core';
 import { useEffect, useRef, useState } from 'react';
-import { useT } from './context';
+import { useT, useUi } from './context';
 import { gaugeAt, sealDataUrl, STAMP, stampQuality } from './stamp';
 
 /**
@@ -9,6 +9,7 @@ import { gaugeAt, sealDataUrl, STAMP, stampQuality } from './stamp';
  */
 export function StampPad({ onStamp, disabled }: { onStamp: (q: StampQuality) => void; disabled?: boolean }) {
   const t = useT();
+  const { platform } = useUi();
   const [gauge, setGauge] = useState(0);
   const [result, setResult] = useState<StampQuality | null>(null);
   const started = useRef<number | null>(null);
@@ -20,7 +21,7 @@ export function StampPad({ onStamp, disabled }: { onStamp: (q: StampQuality) => 
     if (started.current === null) return;
     const g = gaugeAt((performance.now() - started.current) / 1000);
     setGauge(g);
-    if (navigator.vibrate && Math.random() < 0.15) navigator.vibrate(g < 0.6 ? 8 : g <= 0.85 ? 16 : 30);
+    if (Math.random() < 0.15) platform.haptic(g < 0.6 ? 'light' : g <= 0.85 ? 'medium' : 'heavy');
     frame.current = requestAnimationFrame(tick);
   };
   const press = () => {
@@ -34,7 +35,7 @@ export function StampPad({ onStamp, disabled }: { onStamp: (q: StampQuality) => 
     const q = stampQuality(gaugeAt((performance.now() - started.current) / 1000));
     started.current = null;
     setResult(q);
-    navigator.vibrate?.(60);
+    platform.haptic('heavy');
     onStamp(q);
   };
 

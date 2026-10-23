@@ -333,7 +333,7 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
 
 function InviteSection() {
   const t = useT();
-  const { toast } = useUi();
+  const { toast, platform } = useUi();
   const sync = useLedger((s) => s.sync);
   const code = useLedger((s) => s.inviteCode);
   if (sync === 'local') return null;
@@ -356,8 +356,8 @@ function InviteSection() {
             >
               {t('invite.copy')}
             </button>
-            {'share' in navigator && (
-              <button type="button" className="cm-button" onClick={() => void navigator.share({ title: t('app.title'), url })}>
+            {platform.canShare({ url }) && (
+              <button type="button" className="cm-button" onClick={() => void platform.share({ title: t('app.title'), url })}>
                 {t('invite.share')}
               </button>
             )}
@@ -405,6 +405,7 @@ function DeviceSection() {
         />
       </Field>
       <NotificationsField />
+      <ReminderField />
       <Field label={t('settings.sound')}>
         <Segmented<'on' | 'off'>
           label={t('settings.sound')}
@@ -500,5 +501,39 @@ function AccountSection() {
         <p className="cm-muted">{t('settings.account.linked', { email: account.email ?? '' })}</p>
       )}
     </section>
+  );
+}
+
+/** Native shell only: a daily reminder ten minutes before the start time. */
+function ReminderField() {
+  const t = useT();
+  const { platform, toast } = useUi();
+  const ledger = useLedger((s) => s.ledger);
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    void platform.reminder?.enabled().then(setOn);
+  }, [platform]);
+  if (!platform.reminder) return null;
+  const start = toMinutes(currentRuleset(ledger).defaultStartTime) - 10;
+  const at = `${String(Math.floor(start / 60)).padStart(2, '0')}:${String(start % 60).padStart(2, '0')}`;
+  return (
+    <Field label={t('settings.reminder', { at })}>
+      <Segmented<'on' | 'off'>
+        label={t('settings.reminder', { at })}
+        value={on ? 'on' : 'off'}
+        options={[
+          { value: 'on', label: t('settings.notifications.on') },
+          { value: 'off', label: t('settings.notifications.off') },
+        ]}
+        onChange={async (v) => {
+          const result = await platform.reminder!.set(v === 'on', at, {
+            title: t('settings.reminder.title'),
+            body: t('settings.reminder.body'),
+          });
+          setOn(result);
+          if (v === 'on' && !result) toast(t('settings.notifications.denied'), 'error');
+        }}
+      />
+    </Field>
   );
 }

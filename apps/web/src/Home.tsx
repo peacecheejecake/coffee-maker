@@ -1,7 +1,7 @@
 import { currentRuleset, toMinutes } from '@coffee/core';
 import type { TimeOfDay } from '@coffee/scene';
-import { AppShell, useLedger, useUi, type SceneSlotProps } from '@coffee/ui';
-import { lazy, Suspense, useCallback, useMemo, useState } from 'react';
+import { AppShell, TvShell, useLedger, useUi, type SceneSlotProps } from '@coffee/ui';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { createDemoLedger } from './demo/demoLedger';
 import { syncEnabled } from './config';
@@ -12,17 +12,30 @@ import { useSceneEvents } from './model/useSceneEvents';
 // three.js + R3F are most of the bundle; the HUD and sheets work while the scene streams in.
 const TowerScene = lazy(() => import('@coffee/scene').then((m) => ({ default: m.TowerScene })));
 
-export function Home() {
+export function Home({ autoDemo = false }: { autoDemo?: boolean }) {
   const importGroup = useLedger((s) => s.importGroup);
   const sync = useLedger((s) => s.sync);
+  const status = useLedger((s) => s.status);
+  const groupId = useLedger((s) => s.groupId);
   const wallNow = useLedger((s) => s.wallNow);
   const startDemo = useCallback(() => {
     const demo = createDemoLedger(wallNow().workDate);
     void importGroup(demo.groupId, demo.me, demo.events);
   }, [importGroup, wallNow]);
 
+  // /demo (or coffeemaker://demo): open straight into the demo ledger when this device has no group yet.
+  const offerDemo = !syncEnabled && sync === 'local';
+  useEffect(() => {
+    if (autoDemo && offerDemo && status === 'ready' && !groupId) startDemo();
+  }, [autoDemo, offerDemo, status, groupId, startDemo]);
+
   // The demo is a local-only sandbox; in a synced app it would be pushed to the server.
   return <AppShell {...(!syncEnabled && sync === 'local' && { onDemo: startDemo })} renderScene={(p) => <SceneView {...p} />} />;
+}
+
+/** Office TV: same scene and live feed, no controls (open /tv on the screen's browser). */
+export function TvHome() {
+  return <TvShell renderScene={(p) => <SceneView {...p} />} />;
 }
 
 function SceneView({ focusId, focusDesk, onSelectTower }: SceneSlotProps) {

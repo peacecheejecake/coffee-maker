@@ -2,6 +2,7 @@ import type { LedgerActions, LedgerStore, LedgerStoreState } from '@coffee/app';
 import type { Command, Decision } from '@coffee/core';
 import { createTranslator, type Tone, type Translate } from '@coffee/theme';
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { webPlatform, type Platform } from './platform';
 import { createSfx } from './sfx';
 import { useStore } from 'zustand';
 
@@ -14,6 +15,7 @@ interface UiContextValue {
   setSound: (on: boolean) => void;
   /** Plays a scene cue if sound is on. */
   sfx: (name: string) => void;
+  platform: Platform;
   t: Translate;
   toasts: Toast[];
   toast: (message: string, kind?: Toast['kind']) => void;
@@ -47,7 +49,15 @@ function readTone(): Tone {
   }
 }
 
-export function LedgerProvider({ store, children }: { store: LedgerStore; children: ReactNode }) {
+export function LedgerProvider({
+  store,
+  platform = webPlatform,
+  children,
+}: {
+  store: LedgerStore;
+  platform?: Platform;
+  children: ReactNode;
+}) {
   const [tone, setToneState] = useState<Tone>(readTone);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [sound, setSoundState] = useState(readSound);
@@ -94,8 +104,8 @@ export function LedgerProvider({ store, children }: { store: LedgerStore; childr
   );
 
   const ui = useMemo(
-    () => ({ tone, setTone, sound, setSound, sfx, t: createTranslator(tone), toasts, toast, dismissToast }),
-    [tone, setTone, sound, setSound, sfx, toasts, toast, dismissToast],
+    () => ({ tone, setTone, sound, setSound, sfx, platform, t: createTranslator(tone), toasts, toast, dismissToast }),
+    [tone, setTone, sound, setSound, sfx, platform, toasts, toast, dismissToast],
   );
 
   return (

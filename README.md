@@ -10,7 +10,8 @@
 
 ```
 apps/
-  web/    Vite + React 셸. 데모 장부, /sandbox(개발 전용), Playwright e2e
+  web/     Vite + React 셸(PWA). 데모 장부(/demo), TV 대시보드(/tv), /sandbox(개발 전용), Playwright e2e
+  mobile/  Capacitor iOS/Android 셸 — 웹 빌드를 그대로 감쌈
 packages/
   core/      도메인 — 이벤트, 판정, 장부 projection, 탕감 투표 (의존성 0)
   app/       유스케이스 스토어(zustand vanilla), 포트, 시계, ULID
@@ -59,3 +60,15 @@ pnpm supabase secrets set NOTIFY_SECRET=<임의 문자열> VAPID_PUBLIC_KEY=<…
 ```
 
 실서비스: Supabase 프로젝트를 만든 뒤 `pnpm supabase link --project-ref <ref>` → `pnpm supabase db push`, 호스팅 환경에 `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` 설정. 대시보드에서 Anonymous sign-ins를 켜야 합니다.
+
+### 네이티브 앱 (Capacitor)
+
+```sh
+pnpm --filter @coffee/mobile sync     # 웹 빌드 + 네이티브 프로젝트 동기화
+pnpm --filter @coffee/mobile ios      # Xcode 열기 (iOS, SPM)
+pnpm --filter @coffee/mobile android  # Android Studio 열기 (Android SDK 필요)
+node scripts/render-native-assets.mjs # 앱 아이콘·스플래시 재생성
+```
+
+QA 빌드에서 특정 화면으로 바로 열려면 `VITE_NATIVE_START_PATH=/demo`로 웹을 빌드한 뒤 동기화합니다.
+딥링크: `coffeemaker://join/<초대코드>`, `coffeemaker://demo`.

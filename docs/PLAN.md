@@ -586,6 +586,22 @@ seq(
 
 **목표**: 같은 웹 번들을 iOS/Android 앱으로 배포하고 네이티브 기능으로 경험 강화.
 
+> ✅ **구현 (2026-10-23)** — iOS 시뮬레이터 빌드·실행 확인, Android는 프로젝트 생성까지.
+> 완료한 것:
+> - `apps/mobile` (Capacitor 8, iOS는 SPM — CocoaPods 불필요). 웹 번들을 그대로 사용.
+> - **Platform 포트**(`ui/platform.ts`): 햅틱·공유·사진·출근 알림. 웹 구현(`webPlatform`)과 네이티브 구현(`apps/web/src/native.ts`, 네이티브에서만 동적 로드)을 같은 화면이 사용.
+> - 네이티브: 도장 햅틱(Haptics), 증빙 카메라/앨범(Camera), 증명서·초대 공유(Share + Filesystem), **매일 출근 10분 전 로컬 알림**(LocalNotifications, 설정에서 켜기), 상태바·스플래시, 딥링크 `coffeemaker://join/CODE`·`coffeemaker://demo`.
+> - 아이콘·스플래시를 기본 Capacitor 이미지 대신 앱 아트로 생성(`scripts/render-native-assets.mjs`).
+> - iOS 권한 문구(카메라·사진), URL 스킴 / Android 매니페스트(딥링크, 카메라·알림 권한).
+> - **사무실 TV 대시보드**(`/tv`): 조작 UI 없이 순위표 + 빚 있는 탑 순회 카메라. Tauri 대신 웹 라우트로 구현(어떤 TV 브라우저든 사용 가능).
+> - `/demo` 라우트(데모 바로 열기), 모바일에서 온보딩 자동 포커스 제거(키보드가 첫 화면을 가림).
+>
+> 남은 일 (이 환경에서 불가):
+> - **Android 빌드/실행**: Android SDK가 없어 `gradlew` 빌드는 미실행. 프로젝트·매니페스트·아이콘은 준비됨.
+> - **네이티브 푸시(APNs/FCM)**: WKWebView에는 Web Push가 없어 네이티브 앱에서는 서버 푸시가 꺼짐(로컬 출근 알림만). FCM/APNs 토큰 저장과 `notify` 함수의 FCM 발송 분기는 인증서·Firebase 프로젝트가 필요.
+> - **Universal Links / App Links**(https 링크로 앱 열기): 도메인과 `apple-app-site-association`/`assetlinks.json` 호스팅 필요. 현재는 커스텀 스킴.
+> - 스토어 제출물(스크린샷·개인정보 처리방침·서명).
+
 ### 작업 목록
 - [ ] Capacitor 셋업 (`apps/mobile`), `apps/web` 빌드 산출물 재사용
 - [ ] 네이티브 어댑터: `@capacitor/haptics`(도장·착지), `@capacitor/camera`(증빙), `@capacitor/push-notifications`(FCM/APNs), `@capacitor/share`

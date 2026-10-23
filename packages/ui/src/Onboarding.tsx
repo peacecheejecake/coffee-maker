@@ -27,7 +27,15 @@ export function Onboarding({ onDemo }: { onDemo?: () => void }) {
         >
           <label className="cm-field">
             <span className="cm-field-label">{t('onboarding.name')}</span>
-            <input className="cm-input" required maxLength={20} autoFocus value={name} onChange={(e) => setName(e.target.value)} />
+            {/* No autofocus on touch screens: the keyboard would cover the welcome on first launch. */}
+            <input
+              className="cm-input"
+              required
+              maxLength={20}
+              autoFocus={typeof matchMedia !== 'undefined' && matchMedia('(pointer: fine)').matches}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </label>
           <button type="submit" className="cm-button cm-button-primary" disabled={!name.trim() || busy}>
             {t('onboarding.create')}

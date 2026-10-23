@@ -56,7 +56,8 @@ export async function recordLate(page: Page, name: string, time: string) {
   await sheet.getByRole('button', { name, exact: true }).click();
   await sheet.getByLabel('도착 시각').fill(time);
   await sheet.getByRole('button', { name: /^청구/ }).click();
-  await expect(sheet).toBeHidden();
+  // Software rendering can make the first drop frames slow; give the sheet time to close.
+  await expect(sheet).toBeHidden({ timeout: 10_000 });
 }
 
 /** Opens a player's ledger through the accessible tower list, the way a keyboard user would (focus reveals it). */
