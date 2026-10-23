@@ -30,18 +30,22 @@
 
 **산출물**: `packages/core` (의존성 0), 테스트 커버리지 95%+
 
+> ✅ **완료 (2026-10-23)** — 89 tests (시나리오 + fast-check 속성 3종 × 300회), 커버리지 lines 100% / branches 96.5%. ADR [0001](adr/0001-event-sourced-ledger.md).
+> 구현 중 결정: 정정 시 표시 컵 = `max(0, 청구 − 상환)` (이미 낸 잔은 재등장하지 않음), 동시 상환 초과분은 `overpaid`로 집계, 잔 수 상한 10.
+> 이월: 연속 지각/정시 streak 통계는 정시 출근이 이벤트를 남기지 않아 보류 → M2에서 `ArrivalOnTime` 이벤트 도입 여부 결정.
+
 ### 작업 목록
-- [ ] 모노레포 스캐폴드: `pnpm-workspace.yaml`, `tsconfig.base.json`, Vitest, ESLint, dependency-cruiser, CI
-- [ ] `ids.ts` — 브랜드 타입(`PlayerId`, `EventId`, `GroupId`), ID 생성은 주입(`IdGen` 포트)
-- [ ] `time.ts` — `"HH:mm"`, `"YYYY-MM-DD"` 값 객체와 분 단위 연산 (tz 변환은 app 레이어 책임)
-- [ ] `ruleset.ts` — `Ruleset` 타입, `DEFAULT_RULESET`, `validateRuleset()`
-- [ ] `judge.ts` — `judgeLateness()`, `computeCups()`
-- [ ] `events.ts` — `LedgerEvent` 유니온, 타입 가드, `schemaVersion`, upcaster 레지스트리
-- [ ] `decide.ts` — 커맨드 검증 → 이벤트 생성 (Decider 패턴)
-- [ ] `evolve.ts` / `projection.ts` — 이벤트 1개씩 적용하는 리듀서 + `project(events)`
-- [ ] `credit.ts`, `aging.ts` — 등급, 컵 노후 단계
-- [ ] `selectors.ts` — 랭킹, 통계, 명세서(히스토리) 뷰
-- [ ] 시나리오 테스트 + 속성 기반 테스트
+- [x] 모노레포 스캐폴드: `pnpm-workspace.yaml`, `tsconfig.base.json`, Vitest, ESLint, dependency-cruiser, CI
+- [x] `ids.ts` — 브랜드 타입(`PlayerId`, `EventId`, `GroupId`), ID 생성은 주입(`DecideContext.newId`)
+- [x] `time.ts` — `"HH:mm"`, `"YYYY-MM-DD"` 값 객체와 분 단위 연산 (tz 변환은 app 레이어 책임)
+- [x] `ruleset.ts` — `Ruleset` 타입, `DEFAULT_RULESET`, `validateRuleset()`
+- [x] `judge.ts` — `judgeLateness()`, `computeCups()`
+- [x] `events.ts` — `LedgerEvent` 유니온, 타입 가드, `schemaVersion`, upcaster 레지스트리
+- [x] `decide.ts` — 커맨드 검증 → 이벤트 생성 (Decider 패턴)
+- [x] `evolve.ts` — 이벤트 1개씩 적용하는 리듀서 + `project(events)`
+- [x] `credit.ts` — 등급, 컵 노후 단계 (`cupAge`)
+- [x] `selectors.ts` — 랭킹, 통계, 명세서(히스토리) 뷰
+- [x] 시나리오 테스트 + 속성 기반 테스트
 
 ### 핵심 설계 디테일
 
