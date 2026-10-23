@@ -232,7 +232,7 @@ export function createLedgerStore({
         serial(async () => {
           const groupId = asGroupId(newId());
           const me = asPlayerId(newId());
-          set({ groupId, me, events: [], ledger: emptyState(), undo: null, inviteCode: null });
+          set({ events: [], ledger: emptyState(), undo: null, inviteCode: null });
           const added = await run({ type: 'AddPlayer', id: me, name: ownerName, appearance }, me, groupId);
           if (!added.ok) return added;
           const rules = await run(
@@ -242,6 +242,8 @@ export function createLedgerStore({
           );
           await meta.set(META.group, groupId);
           await meta.set(META.me(groupId), me);
+          // The group appears only once it is stored: a reload right after creating it must not lose it.
+          set({ groupId, me });
           if (remote) {
             await meta.set(META.shared(groupId), true);
             set({ sync: 'syncing' });

@@ -65,6 +65,21 @@ describe('ledger store', () => {
     expect(again.getState().ledger).toEqual(st.ledger);
   });
 
+  it('shows a new group only once a reload would find it', async () => {
+    const { store, stores } = setup();
+    await store.getState().init();
+    const seen: Promise<unknown>[] = [];
+    store.subscribe((s, prev) => {
+      if (!s.groupId || prev.groupId) return;
+      // Whatever the UI can see now must survive the page going away now.
+      seen.push(stores.meta.get('activeGroup').then((stored) => expect(stored).toBe(s.groupId)));
+      expect(stores.events.all.map((e) => e.type)).toEqual(['PlayerJoined', 'RulesetChanged']);
+    });
+    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' } });
+    expect(seen).toHaveLength(1);
+    await Promise.all(seen);
+  });
+
   it('dispatches with today in the group timezone and offers an undo', async () => {
     const { store } = await withGroup();
     const r = await store.getState().dispatch({ type: 'RecordArrival', playerId: asPlayerId('B'), arrivedAt: '09:12' });
