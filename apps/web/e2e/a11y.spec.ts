@@ -11,6 +11,8 @@ async function audit(page: Page) {
 }
 
 test('onboarding, main screen and sheets have no serious accessibility violations', async ({ page }) => {
+  // Six full axe audits plus a recorded drop: ~20s alone, several times that next to other WebGL workers.
+  test.setTimeout(150_000);
   await stillScene(page);
   await page.goto('/');
   expect(await audit(page)).toEqual([]);

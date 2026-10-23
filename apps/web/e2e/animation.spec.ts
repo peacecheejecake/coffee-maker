@@ -23,7 +23,9 @@ test('animations finish on their own', async ({ page }) => {
   await addPlayer(page, '민수');
   await recordLate(page, '민수', '09:30');
   await expect(scene(page)).toHaveAttribute('aria-busy', 'true');
-  await expect(scene(page)).toHaveAttribute('aria-busy', 'false', { timeout: 10_000 });
+  // Timelines advance at most 0.1s per frame (no jumps on a hitch), so below 10fps they run slower
+  // than the wall clock — as with SwiftShader next to other test workers.
+  await expect(scene(page)).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
 });
 
 test('reduced motion keeps animations short', async ({ page }) => {

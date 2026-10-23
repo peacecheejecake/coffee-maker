@@ -36,6 +36,8 @@ export default defineConfig({
   timeout: 60_000,
   // The first run after a dependency change waits for Vite's pre-bundling.
   retries: 1,
+  // Every worker renders WebGL on the CPU (SwiftShader); more than a few at once starve each other.
+  workers: process.env.CI ? 2 : 3,
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01 } },
   // Idle decoration (steam, wisps, sway) is irrelevant to most flows and heavy under software rendering;
   // tests that are about motion opt back in with test.use({ contextOptions: { reducedMotion: 'no-preference' } }).
@@ -49,7 +51,9 @@ export default defineConfig({
           {
             name: 'sync',
             testMatch: 'sync/**/*.spec.ts',
-            // Each test drives up to three browsers; running them one at a time keeps SwiftShader responsive.
+            // Each test drives up to three browsers; running them one at a time, after the other projects,
+            // keeps SwiftShader responsive. Run alone with --project=sync --no-deps.
+            dependencies: ['local', 'pwa'],
             fullyParallel: false,
             workers: 1,
             use: { ...chrome, baseURL: `http://127.0.0.1:${SYNC_PORT}` },

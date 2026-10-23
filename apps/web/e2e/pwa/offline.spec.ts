@@ -18,7 +18,7 @@ test('installable and works offline after the first visit', async ({ page, conte
 
   await context.setOffline(true);
   await page.reload();
-  await expect(page.getByRole('button', { name: /업보 청구/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /업보 청구/ })).toBeVisible({ timeout: 15_000 });
   await expect(page.locator('canvas')).toBeVisible({ timeout: 15_000 });
   await context.setOffline(false);
 });
