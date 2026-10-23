@@ -97,20 +97,36 @@ function billAndDrop(towerId: string, cupId: string, index: number): N {
   );
 }
 
-function removal(cupIds: string[], style: 'evaporate' | 'gold' | 'ascend'): N {
+function removal(cupIds: string[], style: 'evaporate' | 'gold' | 'ascend', to: Record<string, string> = {}): N {
+  const duration = style === 'ascend' ? 1.3 : 0.9;
   return par(
     ...cupIds.map((cupId, i) =>
       seq(
-        wait(i * 0.08),
-        step(`leave:${style}`, 0.9, {
+        wait(i * (style === 'ascend' ? 0.18 : 0.08)),
+        step(`leave:${style}`, duration, {
           start: (c) => {
             c.fx.removalStarted.add(cupId);
             const matrix = c.env.cupLastSeen(cupId);
             if (!matrix) return;
-            c.fx.leaving.set(cupId, { cupId, matrix, color: '#999', style, t0: c.fx.now, duration: 0.9 });
+            const target = to[cupId];
+            const dest = target ? c.env.towerBase(target) : undefined;
+            c.fx.leaving.set(cupId, {
+              cupId,
+              matrix,
+              color: '#999',
+              style,
+              t0: c.fx.now,
+              duration,
+              ...(dest && { to: [dest[0] + 0.55, dest[1] + 0.1, dest[2] + 0.45] as Vec3 }),
+            });
             if (style === 'gold') burst(c, 'gold', [matrix.elements[12], matrix.elements[13] + 0.5, matrix.elements[14]]);
+            if (style === 'ascend') c.env.sfx('ascend');
           },
-          end: (c) => void c.fx.leaving.delete(cupId),
+          end: (c) => {
+            const leaving = c.fx.leaving.get(cupId);
+            if (leaving?.to) burst(c, 'gold', leaving.to);
+            c.fx.leaving.delete(cupId);
+          },
         }),
       ),
     ),
@@ -142,11 +158,15 @@ export function direct(event: SceneEvent, opts: DirectOptions = {}): N {
       if (reduced) {
         return step('fade', 0.25, { start: (c) => event.cupIds.forEach((id) => c.fx.removalStarted.add(id)) });
       }
-      const leave = removal(event.cupIds, event.style);
+      const leave = removal(event.cupIds, event.style, event.to);
       if (compact) return leave;
       return seq(
         focus(event.towerId),
-        event.style === 'gold' ? reaper('gavel', 0.7, 'gavel') : reaper('reject', 0.4),
+        event.style === 'gold'
+          ? reaper('gavel', 0.7, 'gavel')
+          : event.style === 'ascend'
+            ? reaper('stamp', 0.45, 'stamp')
+            : reaper('reject', 0.4),
         leave,
         wait(0.5),
         unfocus(),
@@ -182,6 +202,24 @@ export function direct(event: SceneEvent, opts: DirectOptions = {}): N {
       );
     case 'rulesChanged':
       return reduced ? wait(0) : reaper('stamp', 0.6, 'stamp');
+    case 'paidOff':
+      if (reduced) return wait(0);
+      return seq(
+        compact ? null : focus(event.towerId),
+        reaper('tear', 1.0, 'tear'),
+        step('petals', 1.2, {
+          start: (c) => {
+            const b = c.env.towerBase(event.towerId);
+            burst(c, 'petals', [b[0], b[1] + 2.5, b[2]]);
+            burst(c, 'petals', [c.env.deskOut[0], c.env.deskOut[1] + 0.8, c.env.deskOut[2]]);
+          },
+        }),
+        compact ? null : unfocus(),
+      );
+    case 'inspect':
+      return reduced ? wait(0) : reaper('inspect', 1.2);
+    case 'acknowledged':
+      return reduced ? wait(0) : reaper('nod', 0.6);
   }
 }
 

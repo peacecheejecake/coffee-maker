@@ -1,5 +1,18 @@
 import type { GroupId, LedgerEvent } from '@coffee/core';
-import type { EventStore, MetaStore } from './ports';
+import type { AssetStore, EventStore, MetaStore } from './ports';
+
+export function createMemoryAssets(): AssetStore {
+  const blobs = new Map<string, Blob>();
+  let n = 0;
+  return {
+    put: async (groupId, blob) => {
+      const id = `asset-${++n}`;
+      blobs.set(`${groupId}/${id}`, blob);
+      return id;
+    },
+    url: async (groupId, id) => (blobs.has(`${groupId}/${id}`) ? `memory:${groupId}/${id}` : null),
+  };
+}
 
 /** Reference in-memory implementations, for tests and storage-less environments. */
 export function createMemoryStores(): { events: EventStore & { all: LedgerEvent[] }; meta: MetaStore } {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asEventId, overpaid, playerStats, ranking, redemptionsOf } from '../src';
+import { asEventId, awaitingReceipt, distribute, overpaid, playerStats, ranking, redemptionsOf } from '../src';
 import { A, B, C, D, createLedger } from './harness';
 
 describe('scenario 2 — redemption order', () => {
@@ -176,5 +176,61 @@ describe('full journey — record, correct, vote, redeem, pay off', () => {
       overpaid: 0,
     });
     expect(playerStats(l.state, A).received).toBe(2);
+  });
+});
+
+describe('reverting a redemption', () => {
+  it('restores cups in issue order and takes the gifts back', () => {
+    const l = createLedger();
+    l.join(A, B, C);
+    const r1 = l.late(B, '09:10', { workDate: '2026-10-20', cups: 2 });
+    const r2 = l.late(B, '09:10', { workDate: '2026-10-21' });
+    const before = l.state.towers[B]!.cups.map((c) => c.id);
+    const [red] = l.run(B, { type: 'Redeem', debtorId: B, count: 2, recipients: [A, C], order: 'oldest', stampQuality: 'clean' });
+    expect(l.cups(B)).toBe(1);
+    expect(awaitingReceipt(l.state, A)).toHaveLength(1);
+
+    l.run(B, { type: 'RevertRedemption', redemptionId: red!.id });
+    expect(l.state.towers[B]!.cups.map((c) => c.id)).toEqual(before);
+    expect(l.state.lates[r1]?.redeemed).toBe(0);
+    expect(l.state.lates[r2]?.redeemed).toBe(0);
+    expect(l.state.towers[A]!.received).toEqual([]);
+    expect(awaitingReceipt(l.state, A)).toEqual([]);
+    expect(playerStats(l.state, B).cupsRedeemed).toBe(0);
+    expect(l.fail(A, { type: 'AcknowledgeRedemption', redemptionId: red!.id }).code).toBe('AlreadyClosed');
+    expect(l.fail(B, { type: 'RevertRedemption', redemptionId: red!.id }).code).toBe('AlreadyClosed');
+  });
+
+  it('only the recorder, within ten minutes', () => {
+    const l = createLedger();
+    l.join(A, B);
+    l.late(B);
+    const [red] = l.run(B, { type: 'Redeem', debtorId: B, count: 1, recipients: [A], stampQuality: 'faint' });
+    expect(l.fail(A, { type: 'RevertRedemption', redemptionId: red!.id }).code).toBe('NotPermitted');
+    l.advanceMinutes(11);
+    expect(l.fail(B, { type: 'RevertRedemption', redemptionId: red!.id }).code).toBe('RetractWindowClosed');
+    expect(l.fail(B, { type: 'RevertRedemption', redemptionId: asEventId('x') }).code).toBe('TargetNotFound');
+  });
+
+  it('never shows more cups than the record still claims', () => {
+    const l = createLedger();
+    l.join(A, B);
+    const id = l.late(B, '09:10', { cups: 2 });
+    const [red] = l.run(B, { type: 'Redeem', debtorId: B, count: 2, recipients: [A], stampQuality: 'clean' });
+    l.run(A, { type: 'CorrectLate', targetId: id, changes: { cups: 1 } });
+    l.run(B, { type: 'RevertRedemption', redemptionId: red!.id });
+    expect(l.cups(B)).toBe(1);
+    expect(overpaid(l.state, B)).toBe(0);
+  });
+});
+
+describe('distribute', () => {
+  it('round-robins and ignores extra recipients', () => {
+    expect(distribute(['a', 'b', 'c'], [A, C])).toEqual([
+      { cup: 'a', to: A },
+      { cup: 'b', to: C },
+      { cup: 'c', to: A },
+    ]);
+    expect(distribute(['a'], [])).toEqual([]);
   });
 });

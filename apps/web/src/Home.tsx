@@ -20,13 +20,16 @@ export function Home() {
   return <AppShell {...(!syncEnabled && sync === 'local' && { onDemo: startDemo })} renderScene={(p) => <SceneView {...p} />} />;
 }
 
-function SceneView({ focusId, onSelectTower }: SceneSlotProps) {
+function SceneView({ focusId, focusDesk, onSelectTower }: SceneSlotProps) {
   const ledger = useLedger((s) => s.ledger);
   const events = useLedger((s) => s.events);
   const groupId = useLedger((s) => s.groupId);
   const wallNow = useLedger((s) => s.wallNow);
   const today = wallNow().workDate;
-  const model = useMemo(() => toSceneModel(ledger, today, focusId), [ledger, today, focusId]);
+  const model = useMemo(
+    () => ({ ...toSceneModel(ledger, today, focusId), focusDesk }),
+    [ledger, today, focusId, focusDesk],
+  );
   const { queue, consume } = useSceneEvents(groupId, ledger, events);
   const [animating, setAnimating] = useState(false);
   return (

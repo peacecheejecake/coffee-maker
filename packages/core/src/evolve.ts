@@ -47,6 +47,8 @@ export function evolve(state: LedgerState, e: LedgerEvent): LedgerState {
       return onCupsRedeemed(state, e);
     case 'RedemptionAcknowledged':
       return onRedemptionAcknowledged(state, e);
+    case 'RedemptionReverted':
+      return onRedemptionReverted(state, e);
   }
 }
 
@@ -277,15 +279,54 @@ function onCupsRedeemed(s: LedgerState, e: EventOf<'CupsRedeemed'>): LedgerState
         stampQuality: e.stampQuality,
         ...(e.evidence && { evidence: e.evidence }),
         acknowledgedBy: [],
+        reverted: false,
       },
     },
     redemptionOrder: [...next.redemptionOrder, e.id],
   };
 }
 
+function onRedemptionReverted(s: LedgerState, e: EventOf<'RedemptionReverted'>): LedgerState {
+  const r = s.redemptions[e.redemptionId];
+  if (!r || r.reverted || r.recordedBy !== e.actorId) return s;
+  if (minutesBetween(r.at, effectiveAt(e)) > RETRACT_WINDOW_MINUTES) return s;
+
+  // Undo the payment per record, then show max(0, claim − paid) cups again (same rule as corrections),
+  // reusing the reverted cup ids so they return to their issue order.
+  let next = s;
+  const restored: Cup[] = [];
+  const bySource = new Map<EventId, string[]>();
+  for (const cupId of r.cupIds) {
+    const sourceId = cupId.slice(0, cupId.lastIndexOf('#')) as EventId;
+    bySource.set(sourceId, [...(bySource.get(sourceId) ?? []), cupId]);
+  }
+  for (const [sourceId, ids] of bySource) {
+    const rec = next.lates[sourceId];
+    if (!rec) continue;
+    const updated = { ...rec, redeemed: Math.max(0, rec.redeemed - ids.length) };
+    next = putLate(next, updated);
+    if (updated.status !== 'active') continue;
+    const alive = getTower(next, r.debtorId).cups.filter((c) => c.sourceId === sourceId).length;
+    const missing = Math.max(0, updated.cups - updated.redeemed) - alive;
+    for (const cupId of ids.slice(0, Math.max(0, missing))) restored.push({ id: cupId, sourceId, issuedOn: rec.workDate });
+  }
+  const tower = getTower(next, r.debtorId);
+  const alive = new Set(tower.cups.map((c) => c.id));
+  const rank = (c: Cup) => next.lateOrder.indexOf(c.sourceId) * 1000 + Number(c.id.slice(c.id.lastIndexOf('#') + 1));
+  const cups = [...tower.cups, ...restored.filter((c) => !alive.has(c.id))].sort((a, b) => rank(a) - rank(b));
+  next = putTower(next, { ...tower, cups });
+  for (const id of next.playerOrder) {
+    const t = getTower(next, id);
+    if (t.received.some((g) => g.redemptionId === r.id)) {
+      next = putTower(next, { ...t, received: t.received.filter((g) => g.redemptionId !== r.id) });
+    }
+  }
+  return { ...next, redemptions: { ...next.redemptions, [r.id]: { ...r, reverted: true } } };
+}
+
 function onRedemptionAcknowledged(s: LedgerState, e: EventOf<'RedemptionAcknowledged'>): LedgerState {
   const r = s.redemptions[e.redemptionId];
-  if (!r || !r.recipients.includes(e.actorId) || r.acknowledgedBy.includes(e.actorId)) return s;
+  if (!r || r.reverted || !r.recipients.includes(e.actorId) || r.acknowledgedBy.includes(e.actorId)) return s;
   return {
     ...s,
     redemptions: { ...s.redemptions, [r.id]: { ...r, acknowledgedBy: [...r.acknowledgedBy, e.actorId] } },

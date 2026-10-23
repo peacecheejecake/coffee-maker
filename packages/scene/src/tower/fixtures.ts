@@ -6,8 +6,18 @@ import { PALETTE } from '../palette';
 export const PLAQUE = { size: [1.25, 0.32, 0.06] as const, y: 0.17, z: PEDESTAL.radius + 0.12, tilt: -0.12 };
 export const BADGE = { x: 0.43, radius: 0.12 };
 
+/** Received coffees stack up as coasters on the floor beside the pedestal (at most this many shown). */
+export const COASTERS = { max: 10, radius: 0.2, height: 0.035, x: PEDESTAL.radius + 0.3, z: 0.3 };
+
 let cache:
-  | { pedestal: LatheGeometry; ring: TorusGeometry; plaque: BoxGeometry; badge: CylinderGeometry; box: BoxGeometry }
+  | {
+      pedestal: LatheGeometry;
+      ring: TorusGeometry;
+      plaque: BoxGeometry;
+      badge: CylinderGeometry;
+      box: BoxGeometry;
+      coaster: CylinderGeometry;
+    }
   | undefined;
 
 export function fixtureGeometries() {
@@ -27,6 +37,7 @@ export function fixtureGeometries() {
     plaque: new BoxGeometry(...PLAQUE.size),
     badge: new CylinderGeometry(BADGE.radius, BADGE.radius, 0.02, 24),
     box: new BoxGeometry(CARRIER_BOX.width, CARRIER_BOX.height - 0.02, CARRIER_BOX.width),
+    coaster: new CylinderGeometry(COASTERS.radius, COASTERS.radius * 0.95, COASTERS.height, 20),
   };
   return cache;
 }

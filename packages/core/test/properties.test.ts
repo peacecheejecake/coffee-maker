@@ -55,6 +55,7 @@ const op = fc.oneof(
   { weight: 1, arbitrary: fc.record({ k: fc.constant('withdraw' as const), actor: pick, prop: pick }) },
   { weight: 4, arbitrary: fc.record({ k: fc.constant('redeem' as const), actor: pick, player: pick, count: pick, oldest: fc.boolean(), to: fc.subarray([0, 1, 2, 3], { minLength: 1 }) }) },
   { weight: 1, arbitrary: fc.record({ k: fc.constant('time' as const), minutes: fc.integer({ min: 1, max: 60 * 30 }) }) },
+  { weight: 2, arbitrary: fc.record({ k: fc.constant('revert' as const), actor: pick, red: pick }) },
 );type Op = typeof op extends fc.Arbitrary<infer T> ? T : never;
 
 const at = <T>(xs: readonly T[], i: number): T | undefined => (xs.length ? xs[i % xs.length] : undefined);
@@ -104,6 +105,11 @@ function toCommand(s: LedgerState, o: Op): { actor: PlayerId; cmd: Command } | u
     case 'withdraw': {
       const proposalId = at(s.proposalOrder, o.prop);
       return proposalId && { actor, cmd: { type: 'WithdrawWaive', proposalId } };
+    }
+    case 'revert': {
+      const redemptionId = at(s.redemptionOrder, o.red);
+      if (!redemptionId) return undefined;
+      return { actor: s.redemptions[redemptionId]!.recordedBy, cmd: { type: 'RevertRedemption', redemptionId } };
     }
     case 'redeem': {
       const debtors = PLAYERS.filter((p) => (s.towers[p]?.cups.length ?? 0) > 0);

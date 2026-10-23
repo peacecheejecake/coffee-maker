@@ -6,7 +6,7 @@ import { asGroupId, asPlayerId, type LedgerEvent } from '@coffee/core';
 import { createClient } from '@supabase/supabase-js';
 import { describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { createSupabaseRemote } from '../src';
+import { createSupabaseAssets, createSupabaseRemote } from '../src';
 
 const URL = process.env.SUPABASE_URL;
 const ANON = process.env.SUPABASE_ANON_KEY;
@@ -120,6 +120,28 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     expect(tooLate?.error).toMatch(/retract_window_closed/);
     const [inTime] = await a.push([ev(groupId, pa, { type: 'LateRetracted', targetId: fresh.id })]);
     expect(inTime?.error).toBeUndefined();
+  });
+
+  it('redemption undo: recorder only', async () => {
+    const { a, b, groupId, pa, pb } = await setup();
+    const redeem = ev(groupId, pb, { type: 'CupsRedeemed', debtorId: pb, payerId: pb, count: 1, recipients: [pa] });
+    await b.push([redeem]);
+    const [byOther] = await a.push([ev(groupId, pa, { type: 'RedemptionReverted', redemptionId: redeem.id })]);
+    expect(byOther?.error).toMatch(/not_recorder/);
+    const [own] = await b.push([ev(groupId, pb, { type: 'RedemptionReverted', redemptionId: redeem.id })]);
+    expect(own?.error).toBeUndefined();
+  });
+
+  it('evidence photos: members upload and read, outsiders cannot', async () => {
+    const { a, b, groupId } = await setup();
+    const blob = new Blob([new Uint8Array([82, 73, 70, 70])], { type: 'image/webp' });
+    const id = await createSupabaseAssets(a.client).put(groupId, blob);
+    expect(await createSupabaseAssets(b.client).url(groupId, id)).toMatch(/^http/);
+    const outsider = remote();
+    await outsider.ensureSession();
+    await expect(createSupabaseAssets(outsider.client).put(groupId, blob)).rejects.toThrow();
+    const { data } = await outsider.client.storage.from('evidence').download(`${groupId}/${id}.webp`);
+    expect(data).toBeNull();
   });
 
   it('RLS: outsiders read nothing and nobody writes tables directly', async () => {

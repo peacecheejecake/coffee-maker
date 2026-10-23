@@ -78,7 +78,9 @@ export type EventPayload =
       stampQuality: StampQuality;
       evidence?: { assetId: string };
     }
-  | { type: 'RedemptionAcknowledged'; redemptionId: EventId };
+  | { type: 'RedemptionAcknowledged'; redemptionId: EventId }
+  /** Undo of a redemption by whoever recorded it, within the retract window. */
+  | { type: 'RedemptionReverted'; redemptionId: EventId };
 
 export type LedgerEvent = EventMeta & EventPayload;
 export type EventType = LedgerEvent['type'];

@@ -1,4 +1,4 @@
-import type { PushResult, RemoteStatus, RemoteSync } from '@coffee/app';
+import type { AssetStore, PushResult, RemoteStatus, RemoteSync } from '@coffee/app';
 import { asGroupId, asPlayerId, upcast, type GroupId, type LedgerEvent, type RawEvent } from '@coffee/core';
 import { createClient, type SupabaseClient, type SupabaseClientOptions } from '@supabase/supabase-js';
 
@@ -135,6 +135,25 @@ export function createSupabaseRemote(
         clearTimeout(grace);
         void client.removeChannel(channel);
       };
+    },
+  };
+}
+
+/** Evidence photos in the private "evidence" bucket, under "<groupId>/<assetId>.webp" (members only). */
+export function createSupabaseAssets(client: SupabaseClient): AssetStore {
+  const path = (groupId: string, id: string) => `${groupId}/${id}.webp`;
+  return {
+    async put(groupId, blob) {
+      const id = crypto.randomUUID();
+      const { error } = await client.storage.from('evidence').upload(path(groupId, id), blob, {
+        contentType: blob.type || 'image/webp',
+      });
+      if (error) throw new Error(error.message);
+      return id;
+    },
+    async url(groupId, id) {
+      const { data, error } = await client.storage.from('evidence').createSignedUrl(path(groupId, id), 3600);
+      return error ? null : data.signedUrl;
     },
   };
 }

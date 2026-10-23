@@ -3,6 +3,7 @@ import {
   creditGrade,
   cupAge,
   outstanding,
+  playerStats,
   type EventId,
   type LedgerState,
   type PlayerId,
@@ -43,6 +44,7 @@ export function toSceneModel(state: LedgerState, today: WorkDate, focusId: strin
         receivedCount: tower?.received.length ?? 0,
         crowned: top > 0 && cups.length === top,
         ballot: ballotOf(p.id),
+        lotus: cups.length === 0 && playerStats(state, p.id).cupsRedeemed > 0,
       };
     }),
   };

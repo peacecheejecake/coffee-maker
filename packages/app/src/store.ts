@@ -18,7 +18,15 @@ import {
 } from '@coffee/core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { canonicalOrder, mergeEvents } from './ordering';
-import { systemClock, type Clock, type EventStore, type MetaStore, type PushResult, type RemoteSync } from './ports';
+import {
+  systemClock,
+  type AssetStore,
+  type Clock,
+  type EventStore,
+  type MetaStore,
+  type PushResult,
+  type RemoteSync,
+} from './ports';
 import { ulid } from './ulid';
 import { deviceTimeZone, wallTime, type WallTime } from './wallClock';
 
@@ -88,10 +96,16 @@ export interface LedgerActions {
   setSync(status: SyncStatus): void;
   drainRemoteFeed(): LedgerEvent[];
   drainRejections(): Rejection[];
+
+  /** Stores an evidence photo for the active group. Null when photos are unsupported. */
+  putEvidence(blob: Blob): Promise<string | null>;
+  evidenceUrl(assetId: string): Promise<string | null>;
 }
 
 export type LedgerStore = StoreApi<LedgerStoreState & LedgerActions> & {
   remote: RemoteSync | null;
+  /** True when evidence photos can be stored. */
+  supportsEvidence: boolean;
   /** Makes sure a group created offline exists on the server. False for local-only groups. */
   ensureRegistered(): Promise<boolean>;
 };
@@ -101,6 +115,8 @@ export interface LedgerStoreDeps {
   meta: MetaStore;
   /** Omit for a local-only app. */
   remote?: RemoteSync | null;
+  /** Evidence photo storage; without it photos are not offered. */
+  assets?: AssetStore | null;
   clock?: Clock;
   newId?: () => string;
 }
@@ -120,6 +136,7 @@ export function createLedgerStore({
   events: eventStore,
   meta,
   remote = null,
+  assets = null,
   clock = systemClock,
   newId = () => ulid(clock.now().getTime()),
 }: LedgerStoreDeps): LedgerStore {
@@ -358,6 +375,16 @@ export function createLedgerStore({
         return feed;
       },
 
+      async putEvidence(blob) {
+        const { groupId } = get();
+        return assets && groupId ? assets.put(groupId, blob) : null;
+      },
+
+      async evidenceUrl(assetId) {
+        const { groupId } = get();
+        return assets && groupId ? assets.url(groupId, assetId) : null;
+      },
+
       drainRejections() {
         const r = get().rejections;
         if (r.length) set({ rejections: [] });
@@ -385,5 +412,5 @@ export function createLedgerStore({
     return true;
   };
 
-  return Object.assign(store, { remote, ensureRegistered });
+  return Object.assign(store, { remote, supportsEvidence: assets !== null, ensureRegistered });
 }

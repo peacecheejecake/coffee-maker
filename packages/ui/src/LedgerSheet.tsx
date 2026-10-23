@@ -9,11 +9,14 @@ import {
   type LateRecord,
   type LedgerState,
   type PlayerId,
+  type Redemption,
+  redemptionsOf,
 } from '@coffee/core';
 import type { MessageKey, Translate } from '@coffee/theme';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useCommand, useLedger, useT, useUi } from './context';
 import { formatInstant, formatWorkDate } from './format';
+import { sealDataUrl, seedOf } from './stamp';
 import { Sheet } from './primitives';
 
 interface LedgerSheetProps {
@@ -57,6 +60,7 @@ function LedgerBody({ playerId, onCorrect, onOpenBallots, proposeFor }: LedgerSh
         })}
         {stats.overpaid > 0 && <span className="cm-muted"> · {t('ledger.overpaid', { count: stats.overpaid })}</span>}
       </p>
+      <RedemptionList playerId={playerId} />
       {records.length === 0 ? (
         <p className="cm-muted">{t('ledger.empty')}</p>
       ) : (
@@ -209,4 +213,74 @@ function describeCorrection(c: CorrectionEntry, t: Translate): string {
   if (c.changes.cups !== undefined) parts.push(`☕ ${b.cups}→${c.changes.cups}`);
   if (c.changes.note !== undefined) parts.push(`${t('record.note')}: ${c.changes.note || '∅'}`);
   return parts.join(' · ') || t('ledger.corrected' satisfies MessageKey);
+}
+
+function RedemptionList({ playerId }: { playerId: PlayerId }) {
+  const t = useT();
+  const ledger = useLedger((s) => s.ledger);
+  const list = [...redemptionsOf(ledger, playerId)].reverse();
+  if (list.length === 0) return null;
+  return (
+    <section aria-labelledby="redemptions-h">
+      <p id="redemptions-h" className="cm-field-label">
+        {t('ledger.redemptions')}
+      </p>
+      <ul className="cm-list">
+        {list.map((r) => (
+          <RedemptionRow key={r.id} redemption={r} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function RedemptionRow({ redemption: r }: { redemption: Redemption }) {
+  const t = useT();
+  const run = useCommand();
+  const ledger = useLedger((s) => s.ledger);
+  const me = useLedger((s) => s.me);
+  const nowIso = useLedger((s) => s.nowIso);
+  const evidenceUrl = useLedger((s) => s.evidenceUrl);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const acked = r.recipients.filter((id) => r.acknowledgedBy.includes(id)).length;
+  const fully = acked === r.recipients.length;
+  const seal = useMemo(() => sealDataUrl(r.stampQuality, seedOf(r.id), 96), [r.stampQuality, r.id]);
+  const canRevert = !r.reverted && r.recordedBy === me && minutesBetween(r.at, nowIso()) <= RETRACT_WINDOW_MINUTES;
+
+  return (
+    <li className={`cm-record cm-redemption ${r.reverted ? 'is-closed' : ''}`}>
+      <div className="cm-record-head">
+        <span>
+          {t('ledger.redemptionRow', {
+            at: formatInstant(r.at),
+            count: r.cupIds.length,
+            recipients: r.recipients.map((id) => nameOf(ledger, id)).join(', '),
+          })}
+          {r.payerId !== r.debtorId && <span className="cm-muted"> · {t('ledger.paidBy', { name: nameOf(ledger, r.payerId) })}</span>}
+        </span>
+        {seal && (
+          // Faint until every recipient confirms (DESIGN.md §3.3).
+          <img src={seal} alt={t(`redeem.quality.${r.stampQuality}`)} className="cm-seal" style={{ opacity: fully ? 1 : 0.45 }} />
+        )}
+      </div>
+      <div className="cm-record-body">
+        <p className="cm-muted">
+          {r.reverted ? t('ledger.reverted') : t('ledger.acks', { done: acked, total: r.recipients.length })}
+        </p>
+        <div className="cm-row cm-wrap">
+          {r.evidence && !photo && (
+            <button type="button" className="cm-button cm-button-ghost" onClick={async () => setPhoto(await evidenceUrl(r.evidence!.assetId))}>
+              🧾 {t('ledger.evidence')}
+            </button>
+          )}
+          {canRevert && (
+            <button type="button" className="cm-button" onClick={() => void run({ type: 'RevertRedemption', redemptionId: r.id })}>
+              {t('ledger.revert')}
+            </button>
+          )}
+        </div>
+        {photo && <img src={photo} alt={t('ledger.evidence')} className="cm-evidence" />}
+      </div>
+    </li>
+  );
 }

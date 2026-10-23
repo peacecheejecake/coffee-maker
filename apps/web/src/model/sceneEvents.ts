@@ -1,4 +1,4 @@
-import { activePlayers, creditGrade, type LedgerEvent, type LedgerState } from '@coffee/core';
+import { activePlayers, creditGrade, distribute, type LedgerEvent, type LedgerState, type Redemption } from '@coffee/core';
 import type { SceneEvent } from '@coffee/scene';
 
 /**
@@ -21,6 +21,17 @@ export function toSceneEvents(before: LedgerState, after: LedgerState, events: r
     }),
   );
 
+  // New (not reverted) redemptions: which cup goes to whom, and whose debt they paid.
+  const newRedemptions = after.redemptionOrder.flatMap((rid) => {
+    const r = after.redemptions[rid];
+    return r && !r.reverted && !before.redemptions[rid] ? [r] : [];
+  });
+  const destination = new Map<string, string>();
+  for (const r of newRedemptions) {
+    for (const { cup, to } of distribute(r.cupIds, r.recipients)) destination.set(cup, to);
+  }
+  const redeemedFor = (debtorId: string): Redemption | undefined => newRedemptions.find((r) => r.debtorId === debtorId);
+
   for (const player of activePlayers(after)) {
     const prevCups = before.towers[player.id]?.cups ?? [];
     const nextCups = after.towers[player.id]?.cups ?? [];
@@ -29,9 +40,16 @@ export function toSceneEvents(before: LedgerState, after: LedgerState, events: r
     const added = nextCups.filter((c) => !prevIds.has(c.id)).map((c) => c.id);
     const removed = prevCups.filter((c) => !nextIds.has(c.id));
 
+    const redemption = redeemedFor(player.id);
+    if (redemption?.evidence) out.push({ id: id(), kind: 'inspect', towerId: player.id });
     if (removed.length > 0) {
-      const waived = removed.filter((c) => approvedTargets.has(c.sourceId)).map((c) => c.id);
-      const other = removed.filter((c) => !approvedTargets.has(c.sourceId)).map((c) => c.id);
+      const redeemed = removed.filter((c) => destination.has(c.id)).map((c) => c.id);
+      const waived = removed.filter((c) => !destination.has(c.id) && approvedTargets.has(c.sourceId)).map((c) => c.id);
+      const other = removed.filter((c) => !destination.has(c.id) && !approvedTargets.has(c.sourceId)).map((c) => c.id);
+      if (redeemed.length) {
+        const to = Object.fromEntries(redeemed.map((cupId) => [cupId, destination.get(cupId)!]));
+        out.push({ id: id(), kind: 'cupsRemoved', towerId: player.id, cupIds: redeemed, style: 'ascend', to });
+      }
       if (waived.length) out.push({ id: id(), kind: 'cupsRemoved', towerId: player.id, cupIds: waived, style: 'gold' });
       if (other.length) out.push({ id: id(), kind: 'cupsRemoved', towerId: player.id, cupIds: other, style: 'evaporate' });
     }
@@ -40,6 +58,7 @@ export function toSceneEvents(before: LedgerState, after: LedgerState, events: r
     const from = creditGrade(prevCups.length);
     const to = creditGrade(nextCups.length);
     if (from !== to && before.players[player.id]) out.push({ id: id(), kind: 'gradeChanged', towerId: player.id, from, to });
+    if (redemption && prevCups.length > 0 && nextCups.length === 0) out.push({ id: id(), kind: 'paidOff', towerId: player.id });
   }
 
   for (const pid of after.proposalOrder) {
@@ -53,6 +72,7 @@ export function toSceneEvents(before: LedgerState, after: LedgerState, events: r
   for (const e of events) {
     if (e.type === 'ArrivalOnTime' && after.players[e.playerId]) out.push({ id: id(), kind: 'onTime', towerId: e.playerId });
     if (e.type === 'RulesetChanged' && before.playerOrder.length > 0) out.push({ id: id(), kind: 'rulesChanged' });
+    if (e.type === 'RedemptionAcknowledged') out.push({ id: id(), kind: 'acknowledged', towerId: e.actorId });
   }
   return out;
 }

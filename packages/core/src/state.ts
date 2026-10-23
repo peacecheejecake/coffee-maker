@@ -88,6 +88,7 @@ export interface Redemption {
   stampQuality: StampQuality;
   evidence?: { assetId: string };
   acknowledgedBy: PlayerId[];
+  reverted: boolean;
 }
 
 export interface RulesetEntry {

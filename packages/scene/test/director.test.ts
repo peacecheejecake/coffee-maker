@@ -82,4 +82,26 @@ describe('director', () => {
     expect(names({ id: 'd', kind: 'verdict', towerId: 'T', outcome: 'approved' })).toEqual([]);
     expect(names({ id: 'e', kind: 'rulesChanged' })).toEqual(['reaper:stamp']);
   });
+
+  it('redeemed cups ascend to their recipient and leave a gold burst there', () => {
+    const ascend: SceneEvent = { id: 'r', kind: 'cupsRemoved', towerId: 'T', cupIds: ['c1'], style: 'ascend', to: { c1: 'U' } };
+    expect(names(ascend)).toEqual(['focus', 'reaper:stamp', 'leave:ascend', 'unfocus']);
+    const fx = createFx();
+    const { cues, duration } = timelineFor(ascend);
+    const run = new TimelineRun<FxContext>(cues, duration);
+    let sawTarget = false;
+    for (let t = 0; t <= duration + 0.05; t += 0.05) {
+      fx.now = t;
+      run.advance(t, { fx, env });
+      if (fx.leaving.get('c1')?.to) sawTarget = true;
+    }
+    expect(sawTarget).toBe(true);
+    expect(fx.bursts.some((b) => b.kind === 'gold')).toBe(true);
+  });
+
+  it('paying off tears the statement and throws petals; inspect and nod are reaper moves', () => {
+    expect(names({ id: 'p', kind: 'paidOff', towerId: 'T' })).toEqual(['focus', 'reaper:tear', 'petals', 'unfocus']);
+    expect(names({ id: 'i', kind: 'inspect', towerId: 'T' })).toEqual(['reaper:inspect']);
+    expect(names({ id: 'n', kind: 'acknowledged', towerId: 'T' })).toEqual(['reaper:nod']);
+  });
 });

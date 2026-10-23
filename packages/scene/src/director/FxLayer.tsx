@@ -16,7 +16,7 @@ import { cupGeometries } from '../cups/geometry';
 import { PALETTE } from '../palette';
 import { seededRandom } from '../random';
 import type { BurstKind, FxState, Leaving, Vec3 } from './fx';
-import { arcPoint, clamp01, easeInQuad, easeOutCubic } from './motion';
+import { arcPoint, clamp01, easeInOutSine, easeInQuad, easeOutCubic } from './motion';
 
 const FLYER_POOL = 16;
 const LEAVING_POOL = 32;
@@ -115,6 +115,7 @@ const BURST: Record<BurstKind, BurstStyle> = {
   sparkle: { count: 16, life: 0.9, color: '#f2c94c', size: 0.07, speed: 1.6, gravity: 0.5, up: 0.6 },
   gold: { count: 18, life: 1.0, color: '#ffd76a', size: 0.08, speed: 1.4, gravity: -0.4, up: 0.8 },
   stamp: { count: 1, life: 0.9, color: '#e0443e', size: 0.9, speed: 0, gravity: 0, up: 0 },
+  petals: { count: 28, life: 1.6, color: '#f7a8c8', size: 0.07, speed: 1.8, gravity: 1.2, up: 0.5 },
 };
 const BURST_CAPACITY = 160;
 const KINDS = Object.keys(BURST) as BurstKind[];
@@ -128,6 +129,7 @@ function Bursts({ fx }: { fx: RefObject<FxState> }) {
       sparkle: new OctahedronGeometry(1),
       gold: new OctahedronGeometry(1),
       stamp: new TorusGeometry(1, 0.08, 6, 32),
+      petals: new IcosahedronGeometry(1, 0),
     }),
     [],
   );
@@ -225,15 +227,24 @@ function LeavingCups({ fx, ghosts }: { fx: RefObject<FxState>; ghosts: RefObject
       const mats = materials.current[i++];
       if (!group || !mats) continue;
       leaving.matrix.decompose(dummy.position, dummy.quaternion, dummy.scale);
-      const rise = leaving.style === 'ascend' ? easeInQuad(p) * 3 : easeOutCubic(p) * 0.6;
       group.visible = true;
-      group.position.set(dummy.position.x, dummy.position.y + rise, dummy.position.z);
-      group.quaternion.copy(dummy.quaternion);
-      group.scale.setScalar(1 + p * 0.15);
-      const opacity = 1 - easeInQuad(p);
+      let opacity = 1 - easeInQuad(p);
+      if (leaving.to) {
+        // Redeemed: lift off, arc over to the recipient's pedestal, shrink into a coaster.
+        const from: Vec3 = [dummy.position.x, dummy.position.y, dummy.position.z];
+        group.position.set(...arcPoint(from, leaving.to, easeInOutSine(p), 2.4));
+        group.scale.setScalar(1 - 0.6 * easeInQuad(p));
+        group.quaternion.copy(dummy.quaternion);
+        opacity = p < 0.85 ? 1 : 1 - (p - 0.85) / 0.15;
+      } else {
+        const rise = leaving.style === 'ascend' ? easeInQuad(p) * 3 : easeOutCubic(p) * 0.6;
+        group.position.set(dummy.position.x, dummy.position.y + rise, dummy.position.z);
+        group.quaternion.copy(dummy.quaternion);
+        group.scale.setScalar(1 + p * 0.15);
+      }
       for (const m of mats) {
         m.opacity = opacity;
-        const golden = leaving.style === 'gold' && m.userData.part === 'body';
+        const golden = (leaving.style === 'gold' || leaving.style === 'ascend') && m.userData.part === 'body';
         m.color.copy(m.userData.part === 'body' ? paper : m.color);
         if (golden) m.color.lerp(gold, clamp01(p * 2));
         m.emissive.copy(gold).multiplyScalar(golden ? clamp01(p * 2) * 0.8 : 0);

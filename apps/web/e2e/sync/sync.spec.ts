@@ -103,3 +103,34 @@ test('a unanimous waiver across three devices', async ({ browser }) => {
   for (const d of [a, b, c]) await expect(towerLabel(d.page, '민수', 0)).toHaveCount(1);
   for (const d of [a, b, c]) await d.context.close();
 });
+
+test('redeem on one device, confirm receipt on another', async ({ browser }) => {
+  const a = await newDevice(browser);
+  const b = await newDevice(browser);
+  await createGroup(a.page, '지원');
+  await joinAs(b.page, await inviteLink(a.page), '민수');
+  await recordLate(a.page, '민수', '09:30');
+  await expect(towerLabel(b.page, '민수', 1)).toHaveCount(1);
+
+  await b.page.getByRole('button', { name: /상환 창구/ }).click();
+  const sheet = b.page.getByRole('dialog', { name: '상환 창구' });
+  await sheet.getByRole('button', { name: '지원', exact: true }).click();
+  await sheet.getByRole('button', { name: /날인하러 가기/ }).click();
+  const box = await b.page.getByRole('button', { name: /완납 도장/ }).boundingBox();
+  await b.page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+  await b.page.mouse.down();
+  await b.page.waitForTimeout(870);
+  await b.page.mouse.up();
+
+  await expect(a.page.getByText('민수님이 민수의 업보로 커피 1잔을 샀습니다')).toBeVisible();
+  await expect(towerLabel(a.page, '민수', 0)).toHaveCount(1);
+  await a.page.getByRole('button', { name: /심의함/ }).click();
+  await a.page.getByRole('button', { name: '잘 받았습니다 ☕' }).click();
+  await a.page.keyboard.press('Escape');
+
+  await b.page.getByRole('dialog', { name: '완납 증명서' }).getByRole('button', { name: '극락으로' }).click();
+  const ledger = await openLedger(b.page, '민수');
+  await expect(ledger.getByText('수령 확인 1/1')).toBeVisible();
+  await a.context.close();
+  await b.context.close();
+});

@@ -26,6 +26,20 @@ export function BallotPlaques({ towers }: { towers: readonly PlacedTower[] }) {
   );
 }
 
+/** Paid-off towers: a lotus blooms on the empty pedestal (DESIGN.md §3.4). */
+export function PedestalLotuses({ towers }: { towers: readonly PlacedTower[] }) {
+  const paid = useMemo(() => towers.filter((t) => t.tower.lotus && t.tower.cups.length === 0), [towers]);
+  return (
+    <>
+      {paid.map(({ tower, slot }) => (
+        <group key={tower.id} position={[slot.x, slot.y + PEDESTAL.height, slot.z]} scale={1.6}>
+          <Lotus />
+        </group>
+      ))}
+    </>
+  );
+}
+
 function Lotus() {
   return (
     <group>

@@ -14,7 +14,7 @@ export interface Flyer {
   duration: number;
 }
 
-export type BurstKind = 'smoke' | 'splash' | 'sparkle' | 'gold' | 'stamp';
+export type BurstKind = 'smoke' | 'splash' | 'sparkle' | 'gold' | 'stamp' | 'petals';
 
 export interface Burst {
   id: string;
@@ -31,9 +31,11 @@ export interface Leaving {
   style: 'evaporate' | 'gold' | 'ascend';
   t0: number;
   duration: number;
+  /** Ascending cups fly here (a recipient's pedestal). */
+  to?: Vec3;
 }
 
-export type ReaperAction = 'stamp' | 'pen' | 'gavel' | 'reject';
+export type ReaperAction = 'stamp' | 'pen' | 'gavel' | 'reject' | 'tear' | 'inspect' | 'nod';
 
 /**
  * Mutable, per-scene animation state. Written by timeline cues, read every frame by the visual components.

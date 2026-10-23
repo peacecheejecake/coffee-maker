@@ -47,3 +47,11 @@ export interface Clock {
 }
 
 export const systemClock: Clock = { now: () => new Date() };
+
+/** Evidence photos for redemptions (receipts, the coffee itself). */
+export interface AssetStore {
+  /** Stores an already-compressed image and returns its id. */
+  put(groupId: GroupId, blob: Blob): Promise<string>;
+  /** A URL the UI can show, or null if the asset is unavailable. */
+  url(groupId: GroupId, assetId: string): Promise<string | null>;
+}

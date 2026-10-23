@@ -1,4 +1,4 @@
-import { activePlayers, ballotsFor, outstanding, type EventId, type PlayerId } from '@coffee/core';
+import { activePlayers, awaitingReceipt, ballotsFor, outstanding, type EventId, type PlayerId } from '@coffee/core';
 import { useState, type ReactNode } from 'react';
 import { BallotsSheet } from './BallotsSheet';
 import { useLedger, useT } from './context';
@@ -8,6 +8,7 @@ import { ClaimScreen } from './Claim';
 import { FeedToasts } from './Feed';
 import { Onboarding } from './Onboarding';
 import { RecordSheet } from './RecordSheet';
+import { RedeemSheet } from './RedeemSheet';
 import { SettingsSheet } from './SettingsSheet';
 import { Toasts } from './Toasts';
 
@@ -17,10 +18,13 @@ type SheetState =
   | { kind: 'ledger'; playerId: PlayerId; proposeFor?: EventId }
   | { kind: 'correct'; targetId: EventId; returnTo?: PlayerId }
   | { kind: 'ballots' }
+  | { kind: 'redeem' }
   | { kind: 'settings' };
 
 export interface SceneSlotProps {
   focusId: string | null;
+  /** The redemption counter is open: frame the reaper's desk. */
+  focusDesk: boolean;
   onSelectTower: (id: string | null) => void;
 }
 
@@ -45,7 +49,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
   if (!groupId) return <Onboarding {...(onDemo && { onDemo })} />;
   if (!me) return <ClaimScreen />;
 
-  const ballots = ballotsFor(ledger, me, nowIso()).length;
+  const ballots = ballotsFor(ledger, me, nowIso()).length + awaitingReceipt(ledger, me).length;
   const focusId = sheet.kind === 'ledger' ? sheet.playerId : null;
   const meName = ledger.players[me]?.name ?? '';
 
@@ -54,6 +58,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
       <div className="cm-stage">
         {renderScene({
           focusId,
+          focusDesk: sheet.kind === 'redeem',
           onSelectTower: (id) => setSheet(id ? { kind: 'ledger', playerId: id as PlayerId } : { kind: 'none' }),
         })}
       </div>
@@ -103,6 +108,9 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
           <button type="button" className="cm-button cm-button-primary cm-button-large" onClick={() => setSheet({ kind: 'record' })}>
             📜 {t('action.record')}
           </button>
+          <button type="button" className="cm-button cm-button-large cm-button-secondary" onClick={() => setSheet({ kind: 'redeem' })}>
+            🖋 {t('action.redeem')}
+          </button>
         </div>
       </div>
 
@@ -133,6 +141,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
         }}
       />
       <BallotsSheet open={sheet.kind === 'ballots'} onOpenChange={(o) => !o && close()} />
+      <RedeemSheet open={sheet.kind === 'redeem'} onOpenChange={(o) => !o && close()} />
       <SettingsSheet open={sheet.kind === 'settings'} onOpenChange={(o) => !o && close()} />
       <Toasts />
       <FeedToasts />

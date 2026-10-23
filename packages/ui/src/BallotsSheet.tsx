@@ -1,4 +1,4 @@
-import { proposalStatus, type WaiveProposal } from '@coffee/core';
+import { awaitingReceipt, proposalStatus, type Redemption, type WaiveProposal } from '@coffee/core';
 import { useState } from 'react';
 import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
 import { formatWorkDate } from './format';
@@ -7,21 +7,35 @@ import { Sheet } from './primitives';
 export function BallotsSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const t = useT();
   const ledger = useLedger((s) => s.ledger);
+  const me = useLedger((s) => s.me);
   const now = useLedger((s) => s.nowIso)();
+  const receipts = me ? awaitingReceipt(ledger, me) : [];
   const open_ = ledger.proposalOrder
     .map((id) => ledger.proposals[id])
     .filter((p): p is WaiveProposal => !!p && proposalStatus(p, now) === 'open');
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={t('waive.title')}>
-      {open_.length === 0 ? (
-        <p className="cm-muted">{t('waive.empty')}</p>
-      ) : (
-        <ul className="cm-list">
-          {open_.map((p) => (
-            <BallotCard key={p.id} proposal={p} now={now} />
-          ))}
-        </ul>
-      )}
+      <div className="cm-stack">
+        {receipts.length > 0 && (
+          <section className="cm-section" aria-labelledby="receipts-h">
+            <h3 id="receipts-h">{t('receipt.title')}</h3>
+            <ul className="cm-list">
+              {receipts.map((r) => (
+                <ReceiptCard key={r.id} redemption={r} />
+              ))}
+            </ul>
+          </section>
+        )}
+        {open_.length === 0 ? (
+          <p className="cm-muted">{t('waive.empty')}</p>
+        ) : (
+          <ul className="cm-list">
+            {open_.map((p) => (
+              <BallotCard key={p.id} proposal={p} now={now} />
+            ))}
+          </ul>
+        )}
+      </div>
     </Sheet>
   );
 }
@@ -99,6 +113,29 @@ function BallotCard({ proposal: p, now }: { proposal: WaiveProposal; now: string
           {t('action.undo')}
         </button>
       )}
+    </li>
+  );
+}
+
+function ReceiptCard({ redemption: r }: { redemption: Redemption }) {
+  const t = useT();
+  const { toast } = useUi();
+  const run = useCommand();
+  const ledger = useLedger((s) => s.ledger);
+  const name = (id: string) => ledger.players[id as keyof typeof ledger.players]?.name ?? '?';
+  return (
+    <li className="cm-ballot">
+      <p>{t('receipt.card', { payer: name(r.payerId), debtor: name(r.debtorId), count: r.cupIds.length })}</p>
+      <button
+        type="button"
+        className="cm-button cm-button-primary"
+        onClick={async () => {
+          const d = await run({ type: 'AcknowledgeRedemption', redemptionId: r.id });
+          if (d.ok) toast(t('receipt.done'));
+        }}
+      >
+        {t('receipt.confirm')}
+      </button>
     </li>
   );
 }

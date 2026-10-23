@@ -69,7 +69,8 @@ export type Command =
       stampQuality: StampQuality;
       evidence?: { assetId: string };
     }
-  | { type: 'AcknowledgeRedemption'; redemptionId: EventId };
+  | { type: 'AcknowledgeRedemption'; redemptionId: EventId }
+  | { type: 'RevertRedemption'; redemptionId: EventId };
 
 export interface DecideContext {
   groupId: GroupId;
@@ -119,6 +120,8 @@ export function decide(state: LedgerState, cmd: Command, ctx: DecideContext): De
       return redeem(state, cmd, ctx, make);
     case 'AcknowledgeRedemption':
       return acknowledge(state, cmd, ctx, make);
+    case 'RevertRedemption':
+      return revertRedemption(state, cmd, ctx, make);
   }
 }
 
@@ -387,6 +390,18 @@ function acknowledge(s: LedgerState, cmd: Cmd<'AcknowledgeRedemption'>, ctx: Dec
   const r = s.redemptions[cmd.redemptionId];
   if (!r) return fail('TargetNotFound', 'No such redemption');
   if (!r.recipients.includes(ctx.actorId)) return fail('NotPermitted', 'Only a recipient can acknowledge');
+  if (r.reverted) return fail('AlreadyClosed', 'Redemption was reverted');
   if (r.acknowledgedBy.includes(ctx.actorId)) return fail('NoChange', 'Already acknowledged');
   return emit(make({ type: 'RedemptionAcknowledged', redemptionId: r.id }));
+}
+
+function revertRedemption(s: LedgerState, cmd: Cmd<'RevertRedemption'>, ctx: DecideContext, make: Make): Decision {
+  const r = s.redemptions[cmd.redemptionId];
+  if (!r) return fail('TargetNotFound', 'No such redemption');
+  if (r.reverted) return fail('AlreadyClosed', 'Redemption was reverted');
+  if (r.recordedBy !== ctx.actorId) return fail('NotPermitted', 'Only the recorder can revert');
+  if (minutesBetween(r.at, ctx.now) > RETRACT_WINDOW_MINUTES) {
+    return fail('RetractWindowClosed', `Reverting is only possible within ${RETRACT_WINDOW_MINUTES} minutes`);
+  }
+  return emit(make({ type: 'RedemptionReverted', redemptionId: r.id }));
 }

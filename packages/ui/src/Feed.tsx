@@ -45,6 +45,8 @@ function describe(e: LedgerEvent, s: LedgerState, t: Translate): string | null {
       return t('feed.RulesetChanged', { actor: name(e.actorId) });
     case 'PlayerJoined':
       return t('feed.PlayerJoined', { player: e.player.name });
+    case 'CupsRedeemed':
+      return t('feed.CupsRedeemed', { payer: name(e.payerId), debtor: name(e.debtorId), count: e.count });
     default:
       return null;
   }

@@ -63,7 +63,10 @@ export interface PlayerStats {
 
 export function playerStats(s: LedgerState, playerId: PlayerId): PlayerStats {
   const out = outstanding(s, playerId);
-  const redemptions = s.redemptionOrder.flatMap((id) => s.redemptions[id] ?? []);
+  const redemptions = s.redemptionOrder.flatMap((id) => {
+    const r = s.redemptions[id];
+    return r && !r.reverted ? [r] : [];
+  });
   return {
     outstanding: out,
     grade: creditGrade(out),
@@ -145,3 +148,16 @@ export function streak(s: LedgerState, playerId: PlayerId): Streak {
   while (ordered[count] === first) count++;
   return { kind: first, count };
 }
+
+/** Redemptions where `playerId` received coffee and has not confirmed it yet. */
+export const awaitingReceipt = (s: LedgerState, playerId: PlayerId): Redemption[] =>
+  s.redemptionOrder.flatMap((id) => {
+    const r = s.redemptions[id];
+    return r && !r.reverted && r.cupIds.length > 0 && r.recipients.includes(playerId) && !r.acknowledgedBy.includes(playerId)
+      ? [r]
+      : [];
+  });
+
+/** Who gets which cup: round-robin over recipients; recipients beyond the cup count get nothing. */
+export const distribute = <T>(cups: readonly T[], recipients: readonly PlayerId[]): { cup: T; to: PlayerId }[] =>
+  recipients.length === 0 ? [] : cups.map((cup, i) => ({ cup, to: recipients[i % recipients.length]! }));

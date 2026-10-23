@@ -25,11 +25,15 @@ export interface TowerView {
   crowned: boolean;
   /** This player's ballot on an open waive proposal, shown as a plaque on the pedestal. */
   ballot?: 'approve' | 'reject' | null;
+  /** Paid everything off at least once and owes nothing now: a lotus blooms on the pedestal. */
+  lotus?: boolean;
 }
 
 export interface SceneModel {
   towers: TowerView[];
   focusId: string | null;
+  /** Frame the reaper's desk (the redemption counter) instead of a tower. */
+  focusDesk?: boolean;
 }
 
 /**
@@ -38,7 +42,18 @@ export interface SceneModel {
  */
 export type SceneEvent =
   | { id: string; kind: 'cupsAdded'; towerId: string; cupIds: string[] }
-  | { id: string; kind: 'cupsRemoved'; towerId: string; cupIds: string[]; style: 'evaporate' | 'gold' | 'ascend' }
+  | {
+      id: string;
+      kind: 'cupsRemoved';
+      towerId: string;
+      cupIds: string[];
+      style: 'evaporate' | 'gold' | 'ascend';
+      /** For 'ascend': which tower each redeemed cup flies to. */
+      to?: Record<string, string>;
+    }
+  | { id: string; kind: 'paidOff'; towerId: string }
+  | { id: string; kind: 'inspect'; towerId: string }
+  | { id: string; kind: 'acknowledged'; towerId: string }
   | { id: string; kind: 'onTime'; towerId: string }
   | { id: string; kind: 'gradeChanged'; towerId: string; from: Grade; to: Grade }
   | { id: string; kind: 'verdict'; towerId: string; outcome: 'approved' | 'rejected' }

@@ -83,3 +83,35 @@ describe('toSceneModel review state', () => {
     expect(m.towers.find((t) => t.id === C)!.ballot).toBeNull();
   });
 });
+
+describe('redemption scene events', () => {
+  it('cups ascend to their recipients; paying everything off triggers the ceremony; receipts nod', () => {
+    const l = ledger();
+    l.run(A, { type: 'RecordArrival', playerId: B, arrivedAt: '09:30', cupsOverride: 2 });
+    const step = l.run(B, {
+      type: 'Redeem',
+      debtorId: B,
+      count: 2,
+      recipients: [A, C],
+      stampQuality: 'clean',
+      evidence: { assetId: 'x' },
+    });
+    const out = toSceneEvents(step.before, step.after, step.events);
+    expect(kinds(out)).toEqual(['inspect', 'cupsRemoved', 'gradeChanged', 'paidOff']);
+    const removed = out[1] as Extract<(typeof out)[number], { kind: 'cupsRemoved' }>;
+    expect(removed.style).toBe('ascend');
+    expect(Object.values(removed.to!).sort()).toEqual([A, C].sort());
+    expect(toSceneModel(step.after, '2026-10-23').towers.find((t) => t.id === B)!.lotus).toBe(true);
+
+    const ack = l.run(A, { type: 'AcknowledgeRedemption', redemptionId: step.events[0]!.id });
+    expect(toSceneEvents(ack.before, ack.after, ack.events)).toEqual([{ id: expect.any(String), kind: 'acknowledged', towerId: A }]);
+  });
+
+  it('reverting brings the cups back with a drop', () => {
+    const l = ledger();
+    l.run(A, { type: 'RecordArrival', playerId: B, arrivedAt: '09:30' });
+    const red = l.run(B, { type: 'Redeem', debtorId: B, count: 1, recipients: [A], stampQuality: 'faint' });
+    const rev = l.run(B, { type: 'RevertRedemption', redemptionId: red.events[0]!.id });
+    expect(kinds(toSceneEvents(rev.before, rev.after, rev.events))).toEqual(['cupsAdded', 'gradeChanged']);
+  });
+});

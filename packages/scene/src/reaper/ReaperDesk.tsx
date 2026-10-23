@@ -17,12 +17,14 @@ export function ReaperDesk({ fx }: { fx: RefObject<FxState> }) {
   const head = useRef<Group>(null);
   const stampArm = useRef<Group>(null);
   const penHand = useRef<Group>(null);
+  const magnifier = useRef<Group>(null);
 
   useFrame(() => {
     const action = fx.current?.reaper;
     const t = action ? fx.current!.now - action.t0 : Infinity;
     const pose = reaperPose(action?.action ?? null, t);
     stampArm.current?.rotation.set(pose.armX, 0, -0.5);
+    if (magnifier.current) magnifier.current.visible = pose.magnifier;
     if (penHand.current) penHand.current.position.set(-0.3 + pose.penX, 1.0, 0.72 + pose.penZ);
     head.current?.rotation.set(0.08 + pose.headX, pose.headY, -0.1);
     if (desk.current) desk.current.position.y = pose.deskY;
@@ -30,7 +32,7 @@ export function ReaperDesk({ fx }: { fx: RefObject<FxState> }) {
 
   return (
     <group position={[...DESK.position]}>
-      <Reaper head={head} stampArm={stampArm} penHand={penHand} />
+      <Reaper head={head} stampArm={stampArm} penHand={penHand} magnifier={magnifier} />
       <group ref={desk}>
         <Desk />
       </group>
@@ -45,9 +47,11 @@ interface Pose {
   headX: number;
   headY: number;
   deskY: number;
+  /** Magnifying glass in the stamp hand (evidence inspection). */
+  magnifier: boolean;
 }
 
-const REST: Pose = { armX: 0.5, penX: 0, penZ: 0, headX: 0, headY: 0, deskY: 0 };
+const REST: Pose = { armX: 0.5, penX: 0, penZ: 0, headX: 0, headY: 0, deskY: 0, magnifier: false };
 
 /**
  * Procedural poses for the placeholder rig. `t` is seconds since the action started.
@@ -76,6 +80,15 @@ export function reaperPose(action: NonNullable<FxState['reaper']>['action'] | nu
       };
     case 'reject':
       return { ...REST, headY: t < 0.6 ? Math.sin(t * 22) * 0.25 * (1 - t / 0.6) : 0 };
+    case 'tear': {
+      // Both hands pull the statement apart, then fling the pieces.
+      const pull = Math.min(1, t / 0.5);
+      return { ...REST, armX: 0.5 - 0.9 * pull, penX: -0.25 * pull, penZ: -0.1 * pull, headX: -0.1, deskY: jolt(0.5) };
+    }
+    case 'inspect':
+      return { ...REST, armX: -0.15, headX: 0.2, headY: Math.sin(t * 3) * 0.12, magnifier: t < 1.2 };
+    case 'nod':
+      return { ...REST, headX: Math.max(0, Math.sin(t * 10)) * 0.25 * (1 - t / 1.4) };
   }
 }
 
@@ -157,10 +170,12 @@ function Reaper({
   head,
   stampArm,
   penHand,
+  magnifier,
 }: {
   head: RefObject<Group | null>;
   stampArm: RefObject<Group | null>;
   penHand: RefObject<Group | null>;
+  magnifier: RefObject<Group | null>;
 }) {
   const robe = useMemo(
     () =>
@@ -231,6 +246,16 @@ function Reaper({
           <sphereGeometry args={[0.1, 16, 12]} />
           <meshStandardMaterial color={PALETTE.bone} roughness={0.4} />
         </mesh>
+        <group ref={magnifier} position={[0, 0.62, 0.06]} visible={false}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.13, 0.022, 8, 24]} />
+            <meshStandardMaterial color={PALETTE.stirrer} roughness={0.4} />
+          </mesh>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[0.12, 24]} />
+            <meshStandardMaterial color="#cfe9ff" transparent opacity={0.45} roughness={0.05} />
+          </mesh>
+        </group>
       </group>
 
       {/* Coffee-stirrer scythe leaning against the chair */}

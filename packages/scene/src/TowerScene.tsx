@@ -13,7 +13,7 @@ import { unionBounds } from './layout/framing';
 import { deskBounds, placeTowers, towerBounds } from './layout/sceneLayout';
 import type { SceneEvent, SceneModel } from './model';
 import { ReaperDesk } from './reaper/ReaperDesk';
-import { BallotPlaques } from './tower/BallotPlaques';
+import { BallotPlaques, PedestalLotuses } from './tower/BallotPlaques';
 import { Tower } from './tower/Tower';
 import { TowerFixtures } from './tower/TowerFixtures';
 
@@ -120,11 +120,13 @@ export function TowerScene({
   // Contact shadows only depend on what stands on the floor; re-render them when that changes, not every frame.
   const shadowKey = useMemo(() => placed.map((p) => `${p.slot.x.toFixed(2)}:${p.height.toFixed(2)}`).join('|'), [placed]);
 
+  const deskFocus = !fxFocus && !!model.focusDesk;
   const bounds = useMemo(() => {
+    if (deskFocus) return deskBounds();
     const focused = placed.find((p) => p.tower.id === focusId);
     if (focused) return towerBounds(focused);
     return placed.map(towerBounds).reduce(unionBounds, deskBounds());
-  }, [placed, focusId]);
+  }, [placed, focusId, deskFocus]);
 
   const select = useCallback(
     (id: string | null) => {
@@ -158,6 +160,7 @@ export function TowerScene({
         <CupInstances towers={placed} fx={fx} hidden={hidden} />
         <TowerFixtures towers={placed} fx={fx} />
         <BallotPlaques towers={placed} />
+        <PedestalLotuses towers={placed} />
         {placed.map((p) => (
           <Tower key={p.tower.id} placed={p} fontUrl={fontUrl} onSelect={select} />
         ))}
@@ -175,8 +178,8 @@ export function TowerScene({
         {onAnimatingChange && <BusyReporter runner={runner} onChange={onAnimatingChange} />}
         <CameraRig
           bounds={bounds}
-          margin={focusId ? 0.12 : 0.06}
-          {...(!focusId && { maxHeightFactor: 1.15 })}
+          margin={focusId || deskFocus ? 0.12 : 0.06}
+          {...(!focusId && !deskFocus && { maxHeightFactor: 1.15 })}
           stiffness={fxFocus ? 3 : 4}
         />
         {children}

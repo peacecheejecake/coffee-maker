@@ -8,7 +8,7 @@ import { StaticInstances, trs, type InstanceSpec } from '../instancing/StaticIns
 import { CARRIER_BOX, PEDESTAL } from '../layout/dimensions';
 import type { PlacedTower } from '../layout/sceneLayout';
 import { GRADE_COLORS, PALETTE } from '../palette';
-import { BADGE, PLAQUE, carrierLabelTexture, fixtureGeometries } from './fixtures';
+import { BADGE, COASTERS, PLAQUE, carrierLabelTexture, fixtureGeometries } from './fixtures';
 
 /** Pedestals, accent rings, nameplates, grade badges and carrier boxes for all towers: five draw calls total. */
 export function TowerFixtures({ towers, fx }: { towers: readonly PlacedTower[]; fx: RefObject<FxState> }) {
@@ -23,6 +23,7 @@ export function TowerFixtures({ towers, fx }: { towers: readonly PlacedTower[]; 
     const plaques: InstanceSpec[] = [];
     const badges: (InstanceSpec & { towerId: string; plaque: Matrix4 })[] = [];
     const boxes: InstanceSpec[] = [];
+    const coasters: InstanceSpec[] = [];
     for (const t of towers) {
       const base = towerMatrix(t);
       const at = (m: ReturnType<typeof trs>) => base.clone().multiply(m);
@@ -36,6 +37,11 @@ export function TowerFixtures({ towers, fx }: { towers: readonly PlacedTower[]; 
         towerId: t.tower.id,
         plaque: at(plaque),
       });
+      for (let k = 0; k < Math.min(COASTERS.max, t.tower.receivedCount); k++) {
+        coasters.push({
+          matrix: at(trs([COASTERS.x + (k % 2) * 0.02, COASTERS.height / 2 + k * COASTERS.height, COASTERS.z], [0, k * 0.4, 0])),
+        });
+      }
       for (const item of t.items) {
         if (item.kind !== 'box') continue;
         const { jitter } = item;
@@ -44,7 +50,7 @@ export function TowerFixtures({ towers, fx }: { towers: readonly PlacedTower[]; 
         });
       }
     }
-    return { pedestals, rings, plaques, badges, boxes };
+    return { pedestals, rings, plaques, badges, boxes, coasters };
   }, [towers]);
 
   // Grade changes spin the badge once; matrices are only rewritten while a flip runs (and once after).
@@ -81,6 +87,9 @@ export function TowerFixtures({ towers, fx }: { towers: readonly PlacedTower[]; 
       </StaticInstances>
       <StaticInstances geometry={geo.box} items={specs.boxes}>
         <meshStandardMaterial map={texture} roughness={0.85} />
+      </StaticInstances>
+      <StaticInstances geometry={geo.coaster} items={specs.coasters}>
+        <meshStandardMaterial color={PALETTE.carrierBox} roughness={0.9} />
       </StaticInstances>
     </group>
   );
