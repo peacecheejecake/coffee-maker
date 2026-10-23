@@ -37,7 +37,7 @@ export default defineConfig({
   // The first run after a dependency change waits for Vite's pre-bundling.
   retries: 1,
   // Every worker renders WebGL on the CPU (SwiftShader); more than a few at once starve each other.
-  workers: process.env.CI ? 2 : 3,
+  workers: process.env.CI ? 1 : 3,
   expect: { toHaveScreenshot: { maxDiffPixelRatio: 0.01 } },
   // Idle decoration (steam, wisps, sway) is irrelevant to most flows and heavy under software rendering;
   // tests that are about motion opt back in with test.use({ contextOptions: { reducedMotion: 'no-preference' } }).
