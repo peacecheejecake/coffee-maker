@@ -164,7 +164,8 @@ function updatePlayer(s: LedgerState, cmd: Cmd<'UpdatePlayer'>, actor: Player, m
   if (cmd.patch.archived !== undefined && !isOwner) return fail('NotPermitted', 'Only an owner can archive players');
   if (target.id !== actor.id && !isOwner) return fail('NotPermitted', 'Members can only edit themselves');
   if (cmd.patch.name !== undefined && cmd.patch.name.trim() === '') return fail('InvalidInput', 'Name is required');
-  if (cmd.patch.startTimeOverride !== undefined && !isHHmm(cmd.patch.startTimeOverride)) {
+  const start = cmd.patch.startTimeOverride;
+  if (start !== undefined && start !== null && !isHHmm(start)) {
     return fail('InvalidInput', 'startTimeOverride must be HH:mm');
   }
   const patch = cmd.patch.name !== undefined ? { ...cmd.patch, name: cmd.patch.name.trim() } : cmd.patch;

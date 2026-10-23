@@ -1,13 +1,14 @@
-import { asPlayerId } from '@coffee/core';
+import { asPlayerId, project } from '@coffee/core';
 import { describe, expect, it } from 'vitest';
 import { createDemoLedger } from '../src/demo/demoLedger';
 import { toSceneModel } from '../src/model/toSceneModel';
 
 describe('toSceneModel', () => {
-  const state = createDemoLedger('2026-10-23');
+  const TODAY = '2026-10-23';
+  const state = project(createDemoLedger(TODAY).events);
 
   it('maps every active player to a tower in join order', () => {
-    const m = toSceneModel(state, '2026-10-23');
+    const m = toSceneModel(state, TODAY);
     expect(m.towers.map((t) => [t.name, t.cups.length, t.grade])).toEqual([
       ['지원', 0, 'AAA'],
       ['민수', 7, 'C'],
@@ -19,23 +20,21 @@ describe('toSceneModel', () => {
   });
 
   it('crowns the biggest debtor and ages cups by issue date', () => {
-    const m = toSceneModel(state, '2026-10-23');
+    const m = toSceneModel(state, TODAY);
     expect(m.towers.filter((t) => t.crowned).map((t) => t.name)).toEqual(['태민']);
     const taemin = m.towers.find((t) => t.name === '태민')!;
-    expect(taemin.cups[0]!.age).toBe('rip'); // 2026-06-01
+    expect(taemin.cups[0]!.age).toBe('rip');
     expect(taemin.cups.at(-1)!.age).toBe('fresh');
   });
 
   it('keeps focus only for existing towers', () => {
-    expect(toSceneModel(state, '2026-10-23', 'p2').focusId).toBe('p2');
-    expect(toSceneModel(state, '2026-10-23', 'nope').focusId).toBeNull();
+    expect(toSceneModel(state, TODAY, 'demo-p2').focusId).toBe('demo-p2');
+    expect(toSceneModel(state, TODAY, 'nope').focusId).toBeNull();
   });
 
   it('hides archived players', () => {
-    const archived = {
-      ...state,
-      players: { ...state.players, [asPlayerId('p1')]: { ...state.players[asPlayerId('p1')]!, archived: true } },
-    };
-    expect(toSceneModel(archived, '2026-10-23').towers.map((t) => t.name)).not.toContain('지원');
+    const id = asPlayerId('demo-p1');
+    const archived = { ...state, players: { ...state.players, [id]: { ...state.players[id]!, archived: true } } };
+    expect(toSceneModel(archived, TODAY).towers.map((t) => t.name)).not.toContain('지원');
   });
 });

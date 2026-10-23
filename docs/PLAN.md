@@ -217,20 +217,31 @@ interface TowerViewModel {
 
 **산출물**: `packages/app`, `packages/ui`, `packages/theme`, `adapters/local-idb`
 
+> ✅ **완료 (2026-10-23)** — 단위 136개(app 13 · adapters 2 · theme 4 · ui 4 추가), Playwright 13개(시나리오 7 + 씬 6).
+> 구현 중 결정/변경:
+> - `LedgerState → SceneModel` 매퍼는 **apps/web에 유지** — `app`이 `scene`을 import하면 레이어 규칙 위반. 매핑은 조립 지점(composition root)의 책임으로 정리.
+> - `ui`는 `scene`을 모름: `AppShell`이 `renderScene` 슬롯으로 씬을 주입받음.
+> - UI의 모든 시간 판정은 스토어 시계(`nowIso`/`wallNow`) 사용 — `new Date()` 금지 (테스트에서 발견한 버그).
+> - `PlayerPatch.startTimeOverride: null` = 해제 (undefined는 JSON 동기화에서 사라짐).
+> - 메모리 저장소는 `app/memory.ts`(참조 구현), IndexedDB는 `adapters` (id 기준 멱등 append).
+> - 접근성용 숨김 탑 목록(포커스 시 표시)을 M6에서 앞당겨 추가 — 키보드/스크린리더 경로이자 e2e 진입점.
+> - 시간 입력은 커스텀 휠 대신 네이티브 `<input type="time">` (모바일 OS 피커, 접근성).
+> - 정시 출근 이벤트(`ArrivalOnTime`)는 M4로 이월: 다른 기기의 정시 연출과 streak 통계가 필요해지는 시점.
+
 ### 작업 목록
-- [ ] `app/store.ts` — zustand: `{ events, state, pending, sceneModel }`, `dispatch(command)`
-- [ ] `app/usecases/` — `recordArrival`, `correctLate`, `retractLate`, `proposeWaive`, `voteWaive`, `withdrawWaive`, `changeRuleset`, `managePlayers`, `undo`
-- [ ] `app/clock.ts` — 그룹 tz 기준 `now → { workDate, hhmm }` (`Intl.DateTimeFormat` 사용, 외부 라이브러리 X)
-- [ ] `adapters/local-idb` — Dexie 스키마: `events(id, seq?, groupId, at)`, `outbox(id)`, `meta(key)`
-- [ ] `ui/primitives` — Radix UI 기반 Sheet(모바일 bottom / 데스크톱 side), Stepper, TimeWheel, Toast
-- [ ] `ui/record/QuickRecordSheet` — 플레이어 선택 → 시각 → 미리보기 → 청구
-- [ ] `ui/record/AdvancedFields` — 날짜, 기준 시각, 잔 수 override, 메모
-- [ ] `ui/ledger/LedgerSheet` — 플레이어별 명세서: 기록 리스트, 정정 배지, 변경 이력 diff, 정정/철회/탕감 발의 액션
-- [ ] `ui/waive/` — 발의 폼(사유 필수), **심의함**(HUD 배지 + 투표 카드: 대상·사유·찬성 현황 ●●○○·남은 시간·[찬성]/[반대] + 반대 시 확인 다이얼로그), 종료된 심의 기록 열람
-- [ ] 설정의 "탕감 가결 방식" 항목 — 지금은 "만장일치 / 기한 72시간" 표시 + 기한만 조정 가능(24–168h)
-- [ ] `ui/settings/` — 공사 규정(유예, 잔 수 방식, 구간 편집기, 기준 시각), 플레이어 관리(추가/수정/보관, 개별 기준 시각)
-- [ ] `theme/underworld/ko.ts` + `theme/plain/ko.ts` — 타입 안전 문구 사전 (`t('record.cta')`)
-- [ ] Undo 토스트: 기록 직후 5초간 [되돌리기] (= 철회), 이후 10분까진 명세서에서 [철회] 버튼 노출
+- [x] `app/store.ts` — zustand: `{ events, state, pending, sceneModel }`, `dispatch(command)`
+- [x] `app/usecases/` — `recordArrival`, `correctLate`, `retractLate`, `proposeWaive`, `voteWaive`, `withdrawWaive`, `changeRuleset`, `managePlayers`, `undo`
+- [x] `app/clock.ts` — 그룹 tz 기준 `now → { workDate, hhmm }` (`Intl.DateTimeFormat` 사용, 외부 라이브러리 X)
+- [x] `adapters/local-idb` — Dexie 스키마: `events(id, seq?, groupId, at)`, `outbox(id)`, `meta(key)`
+- [x] `ui/primitives` — Radix UI 기반 Sheet(모바일 bottom / 데스크톱 side), Stepper, Segmented, Toast (TimeWheel → 네이티브 time input)
+- [x] `ui/record/QuickRecordSheet` — 플레이어 선택 → 시각 → 미리보기 → 청구
+- [x] `ui/record/AdvancedFields` — 날짜, 기준 시각, 잔 수 override, 메모
+- [x] `ui/ledger/LedgerSheet` — 플레이어별 명세서: 기록 리스트, 정정 배지, 변경 이력 diff, 정정/철회/탕감 발의 액션
+- [x] `ui/waive/` — 발의 폼(사유 필수), **심의함**(HUD 배지 + 투표 카드: 대상·사유·찬성 현황 ●●○○·남은 시간·[찬성]/[반대] + 반대 시 확인 다이얼로그), 종료된 심의 기록 열람
+- [x] 설정의 "탕감 가결 방식" 항목 — 지금은 "만장일치 / 기한 72시간" 표시 + 기한만 조정 가능(24–168h)
+- [x] `ui/settings/` — 공사 규정(유예, 잔 수 방식, 구간 편집기, 기준 시각), 플레이어 관리(추가/수정/보관, 개별 기준 시각)
+- [x] `theme/underworld/ko.ts` + `theme/plain/ko.ts` — 타입 안전 문구 사전 (`t('record.cta')`)
+- [x] Undo 토스트: 기록 직후 5초간 [되돌리기] (= 철회), 이후 10분까진 명세서에서 [철회] 버튼 노출
 
 ### 핵심 설계 디테일
 

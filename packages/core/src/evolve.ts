@@ -1,5 +1,6 @@
 import { effectiveAt, type EventOf, type LedgerEvent } from './events';
 import type { EventId, PlayerId } from './ids';
+import type { Player } from './player';
 import { RETRACT_WINDOW_MINUTES } from './policy';
 import {
   emptyState,
@@ -64,7 +65,11 @@ function onPlayerJoined(s: LedgerState, e: EventOf<'PlayerJoined'>): LedgerState
 function onPlayerUpdated(s: LedgerState, e: EventOf<'PlayerUpdated'>): LedgerState {
   const player = s.players[e.playerId];
   if (!player) return s;
-  return { ...s, players: { ...s.players, [e.playerId]: { ...player, ...e.patch } } };
+  const { startTimeOverride, ...rest } = e.patch;
+  const next: Player = { ...player, ...rest };
+  if (startTimeOverride === null) delete next.startTimeOverride;
+  else if (startTimeOverride !== undefined) next.startTimeOverride = startTimeOverride;
+  return { ...s, players: { ...s.players, [e.playerId]: next } };
 }
 
 function onRulesetChanged(s: LedgerState, e: EventOf<'RulesetChanged'>): LedgerState {

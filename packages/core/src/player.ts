@@ -18,4 +18,5 @@ export interface Player {
   archived: boolean;
 }
 
-export type PlayerPatch = Partial<Pick<Player, 'name' | 'appearance' | 'startTimeOverride' | 'archived'>>;
+/** `startTimeOverride: null` clears the override (undefined would not survive JSON sync). */
+export type PlayerPatch = Partial<Pick<Player, 'name' | 'appearance' | 'archived'>> & { startTimeOverride?: HHmm | null };

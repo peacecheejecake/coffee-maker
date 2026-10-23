@@ -12,8 +12,12 @@
 apps/
   web/    Vite + React 셸. 데모 장부, /sandbox(개발 전용), Playwright e2e
 packages/
-  core/   도메인 — 이벤트, 판정, 장부 projection, 탕감 투표 (의존성 0)
-  scene/  3D 씬 (react-three-fiber) — SceneModel만 입력으로 받음
+  core/      도메인 — 이벤트, 판정, 장부 projection, 탕감 투표 (의존성 0)
+  app/       유스케이스 스토어(zustand vanilla), 포트, 시계, ULID
+  adapters/  저장소 구현 (IndexedDB)
+  theme/     화면 문구 (저승 / 일반 말투)
+  ui/        오버레이 UI — 시트, 폼, 심의함, 설정 (씬은 슬롯으로 주입)
+  scene/     3D 씬 (react-three-fiber) — SceneModel만 입력으로 받음
 scripts/  폰트 서브셋 생성 등
 ```
 

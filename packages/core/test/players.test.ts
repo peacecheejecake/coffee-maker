@@ -44,6 +44,10 @@ describe('players', () => {
     l.join(A, B, C);
     l.run(B, { type: 'UpdatePlayer', playerId: B, patch: { name: ' 민수 ', startTimeOverride: '10:00' } });
     expect(l.state.players[B]).toMatchObject({ name: '민수', startTimeOverride: '10:00' });
+    l.run(B, { type: 'UpdatePlayer', playerId: B, patch: { startTimeOverride: null } });
+    expect(l.state.players[B]).not.toHaveProperty('startTimeOverride');
+    l.run(B, { type: 'UpdatePlayer', playerId: B, patch: { name: '민수' } });
+    expect(l.state.players[B]?.name).toBe('민수');
     expect(l.fail(B, { type: 'UpdatePlayer', playerId: C, patch: { name: 'x' } }).code).toBe('NotPermitted');
     expect(l.fail(B, { type: 'UpdatePlayer', playerId: B, patch: { archived: true } }).code).toBe('NotPermitted');
     expect(l.fail(B, { type: 'UpdatePlayer', playerId: B, patch: { name: '' } }).code).toBe('InvalidInput');
