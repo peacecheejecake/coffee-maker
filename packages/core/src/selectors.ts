@@ -122,3 +122,26 @@ export function previewArrival(
     ...(duplicate && { duplicateOf: duplicate.id }),
   };
 }
+
+export interface Streak {
+  kind: 'late' | 'onTime' | 'none';
+  /** Consecutive recorded work days of that kind, newest first. */
+  count: number;
+}
+
+/**
+ * Current streak from the most recent recorded days (DESIGN.md §2.3 상황 연출): late days come from active
+ * late records, on-time days from ArrivalOnTime. A day with both counts as late. Days without any record
+ * are skipped (weekends, leave) rather than breaking the streak.
+ */
+export function streak(s: LedgerState, playerId: PlayerId): Streak {
+  const days = new Map<WorkDate, 'late' | 'onTime'>();
+  for (const o of s.onTimes) if (o.playerId === playerId) days.set(o.workDate, 'onTime');
+  for (const r of lateRecordsOf(s, playerId)) if (r.status === 'active') days.set(r.workDate, 'late');
+  const ordered = [...days.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([, k]) => k);
+  const first = ordered[0];
+  if (!first) return { kind: 'none', count: 0 };
+  let count = 0;
+  while (ordered[count] === first) count++;
+  return { kind: first, count };
+}

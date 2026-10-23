@@ -95,6 +95,13 @@ export interface RulesetEntry {
   ruleset: Ruleset;
 }
 
+export interface OnTimeRecord {
+  id: EventId;
+  playerId: PlayerId;
+  workDate: WorkDate;
+  arrivedAt: HHmm;
+}
+
 export interface LedgerState {
   players: Partial<Record<PlayerId, Player>>;
   playerOrder: PlayerId[];
@@ -109,6 +116,7 @@ export interface LedgerState {
   proposalOrder: EventId[];
   /** Redeemed cups that found nothing to remove (concurrent redemptions). */
   unappliedRedeemed: Partial<Record<PlayerId, number>>;
+  onTimes: OnTimeRecord[];
 }
 
 export const emptyState = (): LedgerState => ({
@@ -123,4 +131,5 @@ export const emptyState = (): LedgerState => ({
   proposals: {},
   proposalOrder: [],
   unappliedRedeemed: {},
+  onTimes: [],
 });

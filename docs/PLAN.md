@@ -384,27 +384,38 @@ reproject   : 확정 이벤트(seq순) + pending(로컬 생성순) → project()
 
 **산출물**: `app/director`, `app/queue`, `scene/fx`, `/sandbox` 연출 트리거 패널
 
+> ✅ **완료 (2026-10-23)** — scene 단위 33개(타임라인·연출 매핑·모션 곡선), web 매핑 9개, Playwright 애니메이션 3개(탭 스킵·자동 종료·reduced-motion).
+> 구현 중 결정/변경:
+> - **Director/Queue는 `scene` 안에** 둠: 연출 어휘(`SceneEvent`)는 씬이 정의하고, 도메인 → `SceneEvent` 변환은 web(`toSceneEvents`)이 담당. `app`이 씬을 알 필요 없음.
+> - **diff 기반 연출**: 이벤트 종류가 아니라 "컵이 생겼나/사라졌나"로 연출을 정하고 이벤트는 이유(청구/철회/탕감)만 제공 → 동기화 재투영이 화면을 안 바꾸면 연출도 없음.
+> - 연출 큐는 **렌더 중 동기 계산**(effect 아님): 새 컵이 처음 그려지는 프레임에 이미 숨김 처리 → 깜빡임 없음.
+> - 컵 위치는 **스프링으로 표시 위치를 목표에 수렴** → 제거·정정 후 위 컵이 자연스럽게 내려앉음. 흔들림/착지 squash는 시간의 순수 함수로 매 프레임 계산(상태 없음, 스킵 안전).
+> - 이펙트(비행 청구서·낙하 컵·파티클·떠나는 컵)는 **고정 풀**로 그려 draw call 상한 유지.
+> - `ArrivalOnTime` 이벤트 도입(M2에서 이월) + `streak()` 셀렉터.
+> - 사운드는 `onSfx(name)` 훅만 (음원은 M6).
+> - 버그 발견: M2에서 샌드박스 스타일이 지워진 채 기준 스크린샷을 갱신했었음(캔버스 높이 150px) → 복구 후 기준 재생성.
+
 ### 작업 목록
-- [ ] Timeline DSL: `seq()`, `par()`, `step(name, params, duration)`, `wait()`
-- [ ] `SceneDirector`: `(event, before, after) → Timeline` 매핑 (theme별)
-- [ ] `AnimationQueue`: 순차 실행, `skip()`/`flushAll()`, 배치 축약, reduced-motion 분기
-- [ ] 씬 상태 이원화: `target`(최종) / `display`(현재 표시) — tower별 `displayCups`
-- [ ] 스프링 유틸 (프레임레이트 독립 damped spring, `useFrame`에서 갱신)
-- [ ] 연출 구현:
-  - [ ] `ReaperStamp` — 프리미티브 저승사자 팔 트윈 + 도장 쾅 (책상 셰이크)
-  - [ ] `BillFly` — 책상 → 탑 상공, 베지어 + 종이 흔들림
-  - [ ] `Poof` — 연기 파티클 + 청구서 → 컵 스왑
-  - [ ] `CupDrop` — 가속 낙하, 착지 squash&stretch
-  - [ ] `TowerWobble` — 착지 충격이 아래→위로 전파 (컵 i에 지연 i×30ms 각도 스프링)
-  - [ ] `Splash` — 커피 방울 파티클
-  - [ ] `Evaporate` — 디졸브 셰이더(노이즈 기반 알파 컷) + 연기
-  - [ ] `GradeFlip` — 배지 Y축 회전, 상승 금색/하락 적색 플래시
-  - [ ] `Focus`/`Unfocus` — CameraRig 이동
-  - [ ] `OnTime` — 받침대 반짝 + 저승사자 펜 내려놓기
-  - [ ] `ReviewTag` — 심의 중 컵에 "심의 중" 꼬리표(흔들리는 종이) + 보랏빛 림
-  - [ ] `BallotPlaque` — 투표자 받침대에 찬성 연꽃 / 반대 해골 명패가 솟아오름
-  - [ ] `GavelVerdict` — 가결: 의사봉 탕탕탕 → 대상 컵 금빛 → `Evaporate` / 부결·만료: "기각" 도장 + 꼬리표 낙하
-- [ ] 사운드 훅 인터페이스만 (`sfx('stamp')`, 실제 음원은 M6)
+- [x] Timeline DSL: `seq()`, `par()`, `step(name, params, duration)`, `wait()`
+- [x] `SceneDirector`: `(event, before, after) → Timeline` 매핑 (theme별)
+- [x] `AnimationQueue`: 순차 실행, `skip()`/`flushAll()`, 배치 축약, reduced-motion 분기
+- [x] 씬 상태 이원화: `target`(최종) / `display`(현재 표시) — tower별 `displayCups`
+- [x] 스프링 유틸 (프레임레이트 독립 damped spring, `useFrame`에서 갱신)
+- [x] 연출 구현:
+  - [x] `ReaperStamp` — 프리미티브 저승사자 팔 트윈 + 도장 쾅 (책상 셰이크)
+  - [x] `BillFly` — 책상 → 탑 상공, 베지어 + 종이 흔들림
+  - [x] `Poof` — 연기 파티클 + 청구서 → 컵 스왑
+  - [x] `CupDrop` — 가속 낙하, 착지 squash&stretch
+  - [x] `TowerWobble` — 착지 충격이 아래→위로 전파 (컵 i에 지연 i×30ms 각도 스프링)
+  - [x] `Splash` — 커피 방울 파티클
+  - [x] `Evaporate` — 디졸브 셰이더(노이즈 기반 알파 컷) + 연기
+  - [x] `GradeFlip` — 배지 Y축 회전, 상승 금색/하락 적색 플래시
+  - [x] `Focus`/`Unfocus` — CameraRig 이동
+  - [x] `OnTime` — 받침대 반짝 + 저승사자 펜 내려놓기
+  - [x] `ReviewTag` — 심의 중 컵에 "심의 중" 꼬리표(흔들리는 종이) + 보랏빛 림
+  - [x] `BallotPlaque` — 투표자 받침대에 찬성 연꽃 / 반대 해골 명패가 솟아오름
+  - [x] `GavelVerdict` — 가결: 의사봉 탕탕탕 → 대상 컵 금빛 → `Evaporate` / 부결·만료: "기각" 도장 + 꼬리표 낙하
+- [x] 사운드 훅 인터페이스만 (`sfx('stamp')`, 실제 음원은 M6)
 
 ### 핵심 설계 디테일
 

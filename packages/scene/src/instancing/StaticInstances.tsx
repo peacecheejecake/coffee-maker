@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode, type RefObject } from 'react';
 import type { Color} from 'three';
 import { Euler, Matrix4, Quaternion, Vector3, type BufferGeometry, type InstancedMesh } from 'three';
 
@@ -18,11 +18,14 @@ export function StaticInstances({
   geometry,
   items,
   children,
+  meshRef,
 }: {
   geometry: BufferGeometry;
   items: readonly InstanceSpec[];
   /** The material. Per-instance `color` multiplies the material color. */
   children: ReactNode;
+  /** For callers that animate some instances themselves. */
+  meshRef?: RefObject<InstancedMesh | null>;
 }) {
   const capacity = capacityFor(items.length);
   const ref = useRef<InstancedMesh>(null);
@@ -37,7 +40,8 @@ export function StaticInstances({
     mesh.count = items.length;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [items, capacity]);
+    if (meshRef) meshRef.current = mesh;
+  }, [items, capacity, meshRef]);
 
   return (
     <instancedMesh key={capacity} ref={ref} args={[geometry, undefined, capacity]} frustumCulled={false}>

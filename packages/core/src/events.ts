@@ -55,6 +55,8 @@ export type EventPayload =
       reason?: string;
     }
   | { type: 'LateRetracted'; targetId: EventId }
+  /** Recorded so other devices can celebrate and streaks can be counted; carries no debt. */
+  | { type: 'ArrivalOnTime'; playerId: PlayerId; workDate: WorkDate; arrivedAt: HHmm; minutesLate: number }
   | {
       type: 'WaiveProposed';
       targetId: EventId;

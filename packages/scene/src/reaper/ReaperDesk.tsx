@@ -1,6 +1,8 @@
 import { RoundedBox } from '@react-three/drei';
-import { useMemo } from 'react';
-import { BoxGeometry, LatheGeometry, Vector2 } from 'three';
+import { useFrame } from '@react-three/fiber';
+import { useMemo, useRef, type RefObject } from 'react';
+import { BoxGeometry, LatheGeometry, Vector2, type Group } from 'three';
+import type { FxState } from '../director/fx';
 import { StaticInstances, trs } from '../instancing/StaticInstances';
 import { DESK } from '../layout/dimensions';
 import { PALETTE } from '../palette';
@@ -10,13 +12,71 @@ import { hashString, seededRandom } from '../random';
  * Placeholder reaper built from primitives (DESIGN.md §2.5): a chibi reaper in a hooded robe, chin on hand,
  * sitting behind a cream desk with paper stacks. Replaced by a rigged glb in M6 behind the same position.
  */
-export function ReaperDesk() {
+export function ReaperDesk({ fx }: { fx: RefObject<FxState> }) {
+  const desk = useRef<Group>(null);
+  const head = useRef<Group>(null);
+  const stampArm = useRef<Group>(null);
+  const penHand = useRef<Group>(null);
+
+  useFrame(() => {
+    const action = fx.current?.reaper;
+    const t = action ? fx.current!.now - action.t0 : Infinity;
+    const pose = reaperPose(action?.action ?? null, t);
+    stampArm.current?.rotation.set(pose.armX, 0, -0.5);
+    if (penHand.current) penHand.current.position.set(-0.3 + pose.penX, 1.0, 0.72 + pose.penZ);
+    head.current?.rotation.set(0.08 + pose.headX, pose.headY, -0.1);
+    if (desk.current) desk.current.position.y = pose.deskY;
+  });
+
   return (
     <group position={[...DESK.position]}>
-      <Reaper />
-      <Desk />
+      <Reaper head={head} stampArm={stampArm} penHand={penHand} />
+      <group ref={desk}>
+        <Desk />
+      </group>
     </group>
   );
+}
+
+interface Pose {
+  armX: number;
+  penX: number;
+  penZ: number;
+  headX: number;
+  headY: number;
+  deskY: number;
+}
+
+const REST: Pose = { armX: 0.5, penX: 0, penZ: 0, headX: 0, headY: 0, deskY: 0 };
+
+/**
+ * Procedural poses for the placeholder rig. `t` is seconds since the action started.
+ * stamp: raise the chin hand, slam it down (desk jolts); gavel: three taps; pen: scribble then set it down;
+ * reject: a slow head shake before the stamp.
+ */
+export function reaperPose(action: NonNullable<FxState['reaper']>['action'] | null, t: number): Pose {
+  if (!action || t < 0 || t > 1.4) return REST;
+  const jolt = (at: number) => (t > at && t < at + 0.12 ? -0.03 * Math.sin(((t - at) / 0.12) * Math.PI) : 0);
+  switch (action) {
+    case 'stamp': {
+      const armX = t < 0.22 ? 0.5 - 1.6 * (t / 0.22) : t < 0.3 ? -1.1 + 2.4 * ((t - 0.22) / 0.08) : t < 0.7 ? 1.3 : 1.3 - 0.8 * Math.min(1, (t - 0.7) / 0.3);
+      return { ...REST, armX, deskY: jolt(0.3) };
+    }
+    case 'gavel': {
+      const beat = t % 0.22;
+      const armX = t < 0.66 ? 0.5 - 1.2 * Math.sin((beat / 0.22) * Math.PI) : 0.5;
+      return { ...REST, armX, deskY: jolt(0.11) + jolt(0.33) + jolt(0.55) };
+    }
+    case 'pen':
+      return {
+        ...REST,
+        penX: t < 0.5 ? Math.sin(t * 40) * 0.04 : 0.12 * Math.min(1, (t - 0.5) / 0.2),
+        penZ: t < 0.5 ? Math.cos(t * 33) * 0.02 : -0.05,
+        headX: 0.15 * Math.min(1, t / 0.3),
+      };
+    case 'reject':
+      return { ...REST, headY: t < 0.6 ? Math.sin(t * 22) * 0.25 * (1 - t / 0.6) : 0 };
+  }
 }
 
 function Desk() {
@@ -93,7 +153,15 @@ function PaperStacks({ stacks }: { stacks: StackSpec[] }) {
   );
 }
 
-function Reaper() {
+function Reaper({
+  head,
+  stampArm,
+  penHand,
+}: {
+  head: RefObject<Group | null>;
+  stampArm: RefObject<Group | null>;
+  penHand: RefObject<Group | null>;
+}) {
   const robe = useMemo(
     () =>
       new LatheGeometry(
@@ -117,7 +185,7 @@ function Reaper() {
       </mesh>
 
       {/* Head: hood + skull face, tilted slightly as if thinking */}
-      <group position={[0, 1.55, 0.02]} rotation={[0.08, 0, -0.1]}>
+      <group ref={head} position={[0, 1.55, 0.02]} rotation={[0.08, 0, -0.1]}>
         <mesh scale={[1, 1.04, 1]}>
           <sphereGeometry args={[0.46, 32, 24]} />
           <meshStandardMaterial color={PALETTE.robe} roughness={0.75} />
@@ -142,23 +210,28 @@ function Reaper() {
         </mesh>
       </group>
 
-      {/* Arms: one resting on the desk, one propping the chin */}
+      {/* Arms: the left rests on the ledger (it writes), the right props the chin (it stamps). */}
       <mesh position={[-0.35, 0.95, 0.45]} rotation={[1.2, 0, 0.3]}>
         <capsuleGeometry args={[0.1, 0.35, 6, 12]} />
         <meshStandardMaterial color={PALETTE.robeShade} roughness={0.75} />
       </mesh>
-      <mesh position={[-0.3, 1.0, 0.72]}>
-        <sphereGeometry args={[0.1, 16, 12]} />
-        <meshStandardMaterial color={PALETTE.bone} roughness={0.4} />
-      </mesh>
-      <mesh position={[0.28, 1.12, 0.38]} rotation={[0.5, 0, -0.5]}>
-        <capsuleGeometry args={[0.1, 0.32, 6, 12]} />
-        <meshStandardMaterial color={PALETTE.robeShade} roughness={0.75} />
-      </mesh>
-      <mesh position={[0.17, 1.33, 0.55]}>
-        <sphereGeometry args={[0.1, 16, 12]} />
-        <meshStandardMaterial color={PALETTE.bone} roughness={0.4} />
-      </mesh>
+      <group ref={penHand} position={[-0.3, 1.0, 0.72]}>
+        <mesh>
+          <sphereGeometry args={[0.1, 16, 12]} />
+          <meshStandardMaterial color={PALETTE.bone} roughness={0.4} />
+        </mesh>
+      </group>
+      {/* Shoulder pivot; rotation.x swings the forearm and hand. */}
+      <group ref={stampArm} position={[0.3, 1.02, 0.18]} rotation={[0.5, 0, -0.5]}>
+        <mesh position={[0, 0.22, 0]}>
+          <capsuleGeometry args={[0.1, 0.32, 6, 12]} />
+          <meshStandardMaterial color={PALETTE.robeShade} roughness={0.75} />
+        </mesh>
+        <mesh position={[0, 0.48, 0]}>
+          <sphereGeometry args={[0.1, 16, 12]} />
+          <meshStandardMaterial color={PALETTE.bone} roughness={0.4} />
+        </mesh>
+      </group>
 
       {/* Coffee-stirrer scythe leaning against the chair */}
       <group position={[0.85, 0, -0.15]} rotation={[0, 0, -0.18]}>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asEventId, DEFAULT_RULESET, previewArrival, RETRACT_WINDOW_MINUTES } from '../src';
+import { asEventId, DEFAULT_RULESET, previewArrival, RETRACT_WINDOW_MINUTES, streak } from '../src';
 import { A, B, C, createLedger } from './harness';
 
 const TIERED = {
@@ -15,11 +15,13 @@ const TIERED = {
 };
 
 describe('recording arrivals', () => {
-  it('on time (within grace) records nothing', () => {
+  it('on time (within grace) records an ArrivalOnTime, no cups', () => {
     const l = createLedger();
     l.join(A, B);
-    expect(l.run(A, { type: 'RecordArrival', playerId: B, arrivedAt: '09:01' })).toEqual([]);
+    const [e] = l.run(A, { type: 'RecordArrival', playerId: B, arrivedAt: '09:01' });
+    expect(e).toMatchObject({ type: 'ArrivalOnTime', playerId: B, workDate: '2026-10-23', minutesLate: 1 });
     expect(l.cups(B)).toBe(0);
+    expect(l.state.onTimes).toHaveLength(1);
   });
 
   it('late records one cup by default, stored with its computed numbers', () => {
@@ -42,7 +44,7 @@ describe('recording arrivals', () => {
     const l = createLedger();
     l.join(A, B);
     l.run(B, { type: 'UpdatePlayer', playerId: B, patch: { startTimeOverride: '10:00' } });
-    expect(l.run(A, { type: 'RecordArrival', playerId: B, arrivedAt: '09:30' })).toEqual([]);
+    expect(l.run(A, { type: 'RecordArrival', playerId: B, arrivedAt: '09:30' })[0]?.type).toBe('ArrivalOnTime');
     const [e] = l.run(A, {
       type: 'RecordArrival',
       playerId: B,
@@ -198,7 +200,7 @@ describe('scenario 4 — rule changes are not retroactive', () => {
     l.late(B, '09:20', { workDate: '2026-10-10' });
     expect(l.cups(B)).toBe(2);
     // …while today's 20-minute lateness is within the new 30-minute grace.
-    expect(l.run(A, { type: 'RecordArrival', playerId: B, arrivedAt: '09:20' })).toEqual([]);
+    expect(l.run(A, { type: 'RecordArrival', playerId: B, arrivedAt: '09:20' })[0]?.type).toBe('ArrivalOnTime');
   });
 });
 
@@ -236,5 +238,20 @@ describe('scenario 7 — retraction', () => {
     // A retraction from someone else is ignored too.
     l.apply({ ...retract!, actorId: B });
     expect(l.state.lates[rec!.id]?.status).toBe('active');
+  });
+});
+
+describe('streaks', () => {
+  it('counts the latest run of late or on-time days, late winning a day with both', () => {
+    const l = createLedger();
+    l.join(A, B);
+    expect(streak(l.state, B)).toEqual({ kind: 'none', count: 0 });
+    for (const d of ['2026-10-19', '2026-10-20']) l.run(A, { type: 'RecordArrival', playerId: B, workDate: d, arrivedAt: '09:00' });
+    for (const d of ['2026-10-21', '2026-10-22', '2026-10-23']) l.late(B, '09:10', { workDate: d });
+    expect(streak(l.state, B)).toEqual({ kind: 'late', count: 3 });
+    l.run(A, { type: 'RecordArrival', playerId: B, workDate: '2026-10-24', arrivedAt: '08:50' });
+    expect(streak(l.state, B)).toEqual({ kind: 'onTime', count: 1 });
+    l.late(B, '09:30', { workDate: '2026-10-24' });
+    expect(streak(l.state, B)).toEqual({ kind: 'late', count: 4 });
   });
 });

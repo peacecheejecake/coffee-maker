@@ -1,41 +1,156 @@
-import { useMemo } from 'react';
-import { Color } from 'three';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
+import { BoxGeometry, Color, Euler, Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
+import type { FxState } from '../director/fx';
+import { landingScale, wobbleAngle } from '../director/motion';
+import { capacityFor, trs } from '../instancing/StaticInstances';
+import { PEDESTAL } from '../layout/dimensions';
 import type { PlacedTower } from '../layout/sceneLayout';
 import { PALETTE } from '../palette';
-import { StaticInstances, trs, type InstanceSpec } from '../instancing/StaticInstances';
 import { cupGeometries } from './geometry';
 
 export const towerMatrix = (t: PlacedTower) => trs([t.slot.x, t.slot.y, t.slot.z], [0, t.slot.rotationY, 0]);
 
-export function collectCupInstances(towers: readonly PlacedTower[]): InstanceSpec[] {
+interface CupSlot {
+  id: string;
+  towerId: string;
+  /** Position in its tower's loose-cup stack, bottom = 0 (drives the wobble delay). */
+  index: number;
+  towerSize: number;
+  base: Matrix4;
+  y: number;
+  jitter: { rotationY: number; offsetX: number; offsetZ: number; tilt: number };
+  color: Color;
+  underReview: boolean;
+}
+
+function collectSlots(towers: readonly PlacedTower[]): CupSlot[] {
   return towers.flatMap((t) => {
     const base = towerMatrix(t);
     const color = new Color(t.tower.color);
-    return t.items.flatMap((item) => {
-      if (item.kind !== 'cup') return [];
-      const { jitter } = item;
-      const local = trs([jitter.offsetX, item.y, jitter.offsetZ], [jitter.tilt, jitter.rotationY, jitter.tilt * 0.5]);
-      return [{ matrix: base.clone().multiply(local), color }];
-    });
+    let index = 0;
+    return t.items.flatMap((item) =>
+      item.kind === 'cup'
+        ? [
+            {
+              id: item.id,
+              towerId: t.tower.id,
+              index: index++,
+              towerSize: t.tower.cups.length,
+              base,
+              y: item.y,
+              jitter: item.jitter,
+              color,
+              underReview: !!item.cup.underReview,
+            },
+          ]
+        : [],
+    );
   });
 }
 
-/** Every cup in the scene in three draw calls (body, lid, sleeve), regardless of tower count. */
-export function CupInstances({ towers }: { towers: readonly PlacedTower[] }) {
+/** Resting world matrix of every cup in the current layout (no animation applied). */
+export function restingMatrices(towers: readonly PlacedTower[]): Map<string, Matrix4> {
+  const out = new Map<string, Matrix4>();
+  for (const s of collectSlots(towers)) out.set(s.id, s.base.clone().multiply(local(s, s.y, 0, 1, 1)));
+  return out;
+}
+
+const tmp = { p: new Vector3(), q: new Quaternion(), e: new Euler(), s: new Vector3() };
+
+function local(s: CupSlot, y: number, lean: number, xz: number, sy: number): Matrix4 {
+  const { jitter } = s;
+  // Leaning shifts the cup sideways in proportion to its height: the whole stack bends.
+  tmp.p.set(jitter.offsetX + lean * (y - PEDESTAL.height), y, jitter.offsetZ);
+  tmp.q.setFromEuler(tmp.e.set(jitter.tilt, jitter.rotationY, jitter.tilt * 0.5 - lean));
+  tmp.s.set(xz, sy, xz);
+  return new Matrix4().compose(tmp.p, tmp.q, tmp.s);
+}
+
+const tagGeometry = new BoxGeometry(0.16, 0.22, 0.012);
+const tagOffset = trs([0.34, 0.62, 0.22], [0.1, 0.5, -0.25]);
+
+/**
+ * Every cup in the scene in three draw calls (body, lid, sleeve) plus one for review tags.
+ * Matrices are rewritten per frame only while something moves: stacks settling after a removal (spring),
+ * a landing wobble travelling up a tower, or a just-landed cup's squash.
+ */
+export function CupInstances({
+  towers,
+  fx,
+  hidden,
+}: {
+  towers: readonly PlacedTower[];
+  fx: RefObject<FxState>;
+  /** Cups in the model that are still in the air (drawn by the FX layer until they land). */
+  hidden: ReadonlySet<string>;
+}) {
   const geo = cupGeometries();
-  const cups = useMemo(() => collectCupInstances(towers), [towers]);
-  const plain = useMemo(() => cups.map(({ matrix }) => ({ matrix })), [cups]);
+  const invalidate = useThree((s) => s.invalidate);
+  const slots = useMemo(() => collectSlots(towers), [towers]);
+  const capacity = capacityFor(slots.length);
+  const body = useRef<InstancedMesh>(null);
+  const lid = useRef<InstancedMesh>(null);
+  const sleeve = useRef<InstancedMesh>(null);
+  const tags = useRef<InstancedMesh>(null);
+  const displayY = useRef(new Map<string, number>());
+
+  // Layout changed: draw at least one frame (the spring takes it from there).
+  useLayoutEffect(() => invalidate(), [slots, hidden, invalidate]);
+
+  useFrame((_, delta) => {
+    const state = fx.current;
+    const meshes = [body.current, lid.current, sleeve.current];
+    if (!state || meshes.some((m) => !m) || !tags.current) return;
+    const k = 1 - Math.exp(-12 * Math.min(delta, 1 / 20));
+    let moving = false;
+    let n = 0;
+    let t = 0;
+    const seen = new Set<string>();
+    for (const s of slots) {
+      if (hidden.has(s.id) && !state.landed.has(s.id)) continue;
+      seen.add(s.id);
+      let y = displayY.current.get(s.id) ?? s.y;
+      y += (s.y - y) * k;
+      if (Math.abs(s.y - y) < 1e-3) y = s.y;
+      else moving = true;
+      displayY.current.set(s.id, y);
+
+      const impact = state.impacts.get(s.towerId);
+      const lean = impact === undefined ? 0 : wobbleAngle(state.now - impact, s.index, s.towerSize);
+      const landing = state.landings.get(s.id);
+      const [xz, sy] = landing === undefined ? [1, 1] : landingScale(state.now - landing);
+      if (lean !== 0 || sy !== 1) moving = true;
+
+      const m = s.base.clone().multiply(local(s, y, lean, xz, sy));
+      for (const mesh of meshes) mesh!.setMatrixAt(n, m);
+      sleeve.current!.setColorAt(n, s.color);
+      if (s.underReview) tags.current.setMatrixAt(t++, m.clone().multiply(tagOffset));
+      n++;
+    }
+    for (const id of displayY.current.keys()) if (!seen.has(id)) displayY.current.delete(id);
+    for (const mesh of [...meshes, tags.current]) {
+      mesh!.count = mesh === tags.current ? t : n;
+      mesh!.instanceMatrix.needsUpdate = true;
+      if (mesh!.instanceColor) mesh!.instanceColor.needsUpdate = true;
+    }
+    if (moving) invalidate();
+  });
+
   return (
     <group>
-      <StaticInstances geometry={geo.body} items={plain}>
+      <instancedMesh key={`body-${capacity}`} ref={body} args={[geo.body, undefined, capacity]} frustumCulled={false}>
         <meshStandardMaterial color={PALETTE.cupPaper} roughness={0.55} />
-      </StaticInstances>
-      <StaticInstances geometry={geo.lid} items={plain}>
+      </instancedMesh>
+      <instancedMesh key={`lid-${capacity}`} ref={lid} args={[geo.lid, undefined, capacity]} frustumCulled={false}>
         <meshStandardMaterial color={PALETTE.cupLid} roughness={0.35} />
-      </StaticInstances>
-      <StaticInstances geometry={geo.sleeve} items={cups}>
+      </instancedMesh>
+      <instancedMesh key={`sleeve-${capacity}`} ref={sleeve} args={[geo.sleeve, undefined, capacity]} frustumCulled={false}>
         <meshStandardMaterial roughness={0.7} />
-      </StaticInstances>
+      </instancedMesh>
+      <instancedMesh key={`tag-${capacity}`} ref={tags} args={[tagGeometry, undefined, capacity]} frustumCulled={false}>
+        <meshStandardMaterial color={PALETTE.review} emissive={PALETTE.review} emissiveIntensity={0.6} roughness={0.6} />
+      </instancedMesh>
     </group>
   );
 }

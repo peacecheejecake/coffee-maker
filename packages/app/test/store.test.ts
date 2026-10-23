@@ -96,11 +96,12 @@ describe('ledger store', () => {
     expect(p?.status).toBe('withdrawn');
   });
 
-  it('on-time arrivals and domain errors leave state and storage untouched', async () => {
+  it('on-time arrivals record no debt and offer no undo; domain errors store nothing', async () => {
     const { store, stores } = await withGroup();
-    const before = stores.events.all.length;
     const onTime = await store.getState().dispatch({ type: 'RecordArrival', playerId: asPlayerId('B'), arrivedAt: '09:01' });
-    expect(onTime).toEqual({ ok: true, value: [] });
+    expect(onTime.ok && onTime.value.map((e) => e.type)).toEqual(['ArrivalOnTime']);
+    expect(outstanding(store.getState().ledger, asPlayerId('B'))).toBe(0);
+    const before = stores.events.all.length;
     const bad = await store.getState().dispatch({ type: 'RecordArrival', playerId: asPlayerId('Z'), arrivedAt: '09:30' });
     expect(bad.ok).toBe(false);
     expect(stores.events.all).toHaveLength(before);

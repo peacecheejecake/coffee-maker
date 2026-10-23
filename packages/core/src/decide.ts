@@ -211,7 +211,17 @@ function recordArrival(s: LedgerState, cmd: Cmd<'RecordArrival'>, ctx: DecideCon
   }
 
   const cups = cmd.cupsOverride ?? preview.cups;
-  if (cups === 0) return emit(); // on time: nothing to record
+  if (cups === 0) {
+    return emit(
+      make({
+        type: 'ArrivalOnTime',
+        playerId: player.id,
+        workDate,
+        arrivedAt: cmd.arrivedAt,
+        minutesLate: preview.minutesLate,
+      }),
+    );
+  }
 
   const note = cmd.note?.trim();
   return emit(

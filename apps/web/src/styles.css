@@ -34,3 +34,20 @@ body {
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Dev sandbox only */
+.stage {
+  position: fixed;
+  inset: 0;
+}
+
+.probe {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: rgb(0 0 0 / 0.55);
+  padding: 6px 10px;
+  border-radius: 8px;
+  pointer-events: none;
+}

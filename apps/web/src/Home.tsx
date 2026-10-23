@@ -1,10 +1,11 @@
 import { TowerScene } from '@coffee/scene';
 import { AppShell, useLedger, type SceneSlotProps } from '@coffee/ui';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { createDemoLedger } from './demo/demoLedger';
 import { syncEnabled } from './config';
 import { FONT_URL } from './fonts';
 import { toSceneModel } from './model/toSceneModel';
+import { useSceneEvents } from './model/useSceneEvents';
 
 export function Home() {
   const importGroup = useLedger((s) => s.importGroup);
@@ -21,8 +22,23 @@ export function Home() {
 
 function SceneView({ focusId, onSelectTower }: SceneSlotProps) {
   const ledger = useLedger((s) => s.ledger);
+  const events = useLedger((s) => s.events);
+  const groupId = useLedger((s) => s.groupId);
   const wallNow = useLedger((s) => s.wallNow);
   const today = wallNow().workDate;
   const model = useMemo(() => toSceneModel(ledger, today, focusId), [ledger, today, focusId]);
-  return <TowerScene model={model} fontUrl={FONT_URL} onSelectTower={onSelectTower} />;
+  const { queue, consume } = useSceneEvents(groupId, ledger, events);
+  const [animating, setAnimating] = useState(false);
+  return (
+    <div className="cm-stage" aria-busy={animating} data-testid="scene">
+      <TowerScene
+        model={model}
+        fontUrl={FONT_URL}
+        onSelectTower={onSelectTower}
+        events={queue}
+        onEventsConsumed={consume}
+        onAnimatingChange={setAnimating}
+      />
+    </div>
+  );
 }

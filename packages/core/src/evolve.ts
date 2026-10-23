@@ -33,6 +33,10 @@ export function evolve(state: LedgerState, e: LedgerEvent): LedgerState {
       return onLateCorrected(state, e);
     case 'LateRetracted':
       return onLateRetracted(state, e);
+    case 'ArrivalOnTime':
+      return state.players[e.playerId]
+        ? { ...state, onTimes: [...state.onTimes, { id: e.id, playerId: e.playerId, workDate: e.workDate, arrivedAt: e.arrivedAt }] }
+        : state;
     case 'WaiveProposed':
       return onWaiveProposed(state, e);
     case 'WaiveVoted':

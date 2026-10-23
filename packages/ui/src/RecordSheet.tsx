@@ -70,7 +70,8 @@ function RecordForm({ onOpenChange, initialPlayerId, onCorrectExisting }: Record
     });
     setBusy(false);
     if (!d.ok) return;
-    toast(d.value.length === 0 ? t('record.onTime', { name: player.name }) : t('record.done', { name: player.name, cups }));
+    const onTime = d.value[0]?.type === 'ArrivalOnTime';
+    toast(onTime ? t('record.onTime', { name: player.name }) : t('record.done', { name: player.name, cups }));
     onOpenChange(false);
   }
 

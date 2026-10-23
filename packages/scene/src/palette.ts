@@ -21,6 +21,8 @@ export const PALETTE = {
   rimLight: '#7fd8ff',
   sky: '#a5a8ff',
   ground: '#3b2b3e',
+  review: '#b59cff',
+  lotus: '#f7a8c8',
 } as const;
 
 export const GRADE_COLORS = {

@@ -18,6 +18,10 @@ export default tseslint.config(
     rules: reactHooks.configs.recommended.rules,
   },
   {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: { globals: { process: 'readonly', console: 'readonly' } },
+  },
+  {
     files: ['**/*.cjs'],
     languageOptions: { sourceType: 'commonjs', globals: { module: 'writable', require: 'readonly' } },
   },
