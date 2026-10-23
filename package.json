@@ -15,7 +15,8 @@
     "check": "pnpm typecheck && pnpm lint && pnpm depcheck && pnpm test",
     "supabase": "supabase",
     "supabase:start": "node scripts/supabase-start.mjs",
-    "test:int": "node scripts/with-supabase-env.mjs pnpm --filter @coffee/adapters test"
+    "test:int": "node scripts/with-supabase-env.mjs pnpm --filter @coffee/adapters test",
+    "deploy:web": "node scripts/deploy-web.mjs --prod"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
