@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RULESET, missedDays, missedEventId, type LedgerEvent } from '../src';
+import { DEFAULT_RULESET, isSoloMember, missedDays, missedEventId, type LedgerEvent } from '../src';
 import { A, B, C, D, GROUP, createLedger, type Ledger } from './harness';
 
 const DAY = 24 * 60;
@@ -225,6 +225,24 @@ describe('attendance mode', () => {
       l.fail(B, { type: 'ProposeMotion', motion: { kind: 'redeem', debtorId: C, recipients: [B], stampQuality: 'clean' } })
         .code,
     ).toBe('NothingToRedeem');
+  });
+});
+
+describe('a group of one', () => {
+  it('changes rules, holidays and cups without a vote', () => {
+    const l = createLedger();
+    l.join(A, B); // B was added by A but never uses the app: not a member for motions
+    l.run(A, { type: 'ChangeMode', mode: 'attendance' });
+    l.run(A, { type: 'AdoptRules', ruleset: DEFAULT_RULESET });
+    expect(isSoloMember(l.state, A)).toBe(true);
+    l.run(A, { type: 'ProposeMotion', motion: { kind: 'ruleset', ruleset: { ...DEFAULT_RULESET, graceMinutes: 7 } } });
+    expect(l.state.motionOrder.map((id) => l.state.motions[id]?.status)).toEqual(['approved']);
+    l.run(A, { type: 'ProposeMotion', motion: { kind: 'holiday', date: '2026-10-27', name: '창립기념일', off: true } });
+    expect(l.state.holidays['2026-10-27']).toMatchObject({ name: '창립기념일' });
+    l.run(A, { type: 'ProposeMotion', motion: { kind: 'adjust', playerId: A, delta: 2, reason: '자수' } });
+    expect(l.cups(A)).toBe(2);
+    l.claim(B);
+    expect(isSoloMember(l.state, A)).toBe(false);
   });
 });
 

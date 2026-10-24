@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createGroup, trackErrors } from './helpers';
 
-test('attendance mode: the owner confirms the first rules; changes then go to a vote', async ({ page }) => {
+test('attendance mode: the owner confirms the first rules; alone, later changes need no vote', async ({ page }) => {
   const errors = trackErrors(page);
   await createGroup(page, '지원', 'attendance');
   await expect(page.getByRole('button', { name: /규정 확정 대기/ })).toBeDisabled();
@@ -11,8 +11,11 @@ test('attendance mode: the owner confirms the first rules; changes then go to a 
   await settings.getByRole('button', { name: '이 규정으로 확정' }).click();
   await settings.getByRole('alert').getByRole('button', { name: '이 규정으로 확정' }).click();
   await expect(page.getByText(/규정이 확정되었습니다/)).toBeVisible();
-  // From now on the rules section proposes instead of saving.
-  await expect(settings.getByRole('button', { name: '규정 변경 발의' })).toBeVisible();
+  // Alone in the group, a rule change passes on the spot, so it is a plain save.
+  await expect(settings.getByText(/혼자라서 바로 반영/)).toBeVisible();
+  await settings.getByRole('button', { name: '유예 시간 (분) +' }).click();
+  await settings.getByRole('button', { name: '저장' }).click();
+  await expect(page.getByText('새 규정집에 도장이 찍혔습니다')).toBeVisible();
   await page.keyboard.press('Escape');
 
   // Judging starts tomorrow.
@@ -20,8 +23,11 @@ test('attendance mode: the owner confirms the first rules; changes then go to a 
 
   await page.getByRole('button', { name: '일정' }).click();
   const calendar = page.getByRole('dialog', { name: '일정' });
-  await calendar.getByLabel('날짜').last().fill('2026-10-20');
+  // Month grid: pick a day, register a vacation, find it under the list view.
+  await calendar.getByRole('button', { name: /^10\. 20\./ }).click();
   await calendar.getByRole('button', { name: '휴가 등록' }).click();
+  await expect(calendar.getByRole('button', { name: /^10\. 20\..*내 휴가/ })).toBeVisible();
+  await calendar.getByRole('radio', { name: '목록' }).click();
   await expect(calendar.getByText(/10\. 20\./)).toBeVisible();
   expect(errors).toEqual([]);
 });

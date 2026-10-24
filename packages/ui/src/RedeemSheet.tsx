@@ -1,4 +1,4 @@
-import { activePlayers, outstanding, playerStats, type PlayerId, type RedeemOrder, type StampQuality } from '@coffee/core';
+import { activePlayers, motionVoters, outstanding, playerStats, type PlayerId, type RedeemOrder, type StampQuality } from '@coffee/core';
 import { useEffect, useMemo, useState } from 'react';
 import { CertificateDialog } from './Certificate';
 import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
@@ -52,6 +52,10 @@ function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) 
   const [count, setCount] = useState(1);
   const others = useMemo(() => players.filter((p) => p.id !== debtorId), [players, debtorId]);
   const [recipients, setRecipients] = useState<PlayerId[]>([]);
+  const needed =
+    me && debtorId
+      ? motionVoters(ledger, me, { kind: 'redeem', debtorId, recipients, stampQuality: 'clean' }).length
+      : 0;
   const [order, setOrder] = useState<RedeemOrder>('newest');
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
@@ -140,9 +144,8 @@ function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) 
       </fieldset>
 
       {byMotion ? (
-        <p className="cm-muted">
-          {t('redeem.byMotion', { count: players.filter((p) => p.id !== me && p.id !== debtorId).length })}
-        </p>
+        // Counted like the core does: members who use the app, minus the proposer and the debtor.
+        needed > 0 && <p className="cm-muted">{t('redeem.byMotion', { count: needed })}</p>
       ) : (
         <Field label={t('redeem.count')}>
           <Stepper label={t('redeem.count')} value={count} min={1} max={Math.max(1, owed)} onChange={setCount} />

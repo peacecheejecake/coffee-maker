@@ -178,7 +178,7 @@ describe('attendance mode', () => {
     expect(screen.getByRole('button', { name: /출두 완료/ }).hasAttribute('disabled')).toBe(true);
   });
 
-  it('proposes a cup adjustment from the ledger sheet', async () => {
+  it('adjusts cups from the ledger sheet without a vote while alone', async () => {
     const store = await attendanceStore({ at: '2026-10-23T00:40:00Z' });
     const user = userEvent.setup();
     render(
@@ -186,10 +186,10 @@ describe('attendance mode', () => {
         <LedgerSheet playerId={asPlayerId('B')} proposeFor={null} onOpenChange={() => {}} onCorrect={() => {}} onOpenBallots={() => {}} />
       </LedgerProvider>,
     );
-    await user.click(screen.getByRole('button', { name: '업보 수정 발의' }));
+    // B never used the app, so 지원 is alone: no "발의" wording, and it passes at once.
+    await user.click(screen.getByRole('button', { name: '업보 수정' }));
     await user.type(screen.getByLabelText('사유'), '회식 지각');
-    await user.click(screen.getByRole('button', { name: '수정 발의' }));
-    // Two players: 지원 is the only voter and proposed it, so it passes at once.
+    await user.click(screen.getByRole('button', { name: '수정' }));
     expect(Object.values(store.getState().ledger.motions)[0]?.status).toBe('approved');
     expect(store.getState().ledger.towers[asPlayerId('B')]?.cups).toHaveLength(1);
   });

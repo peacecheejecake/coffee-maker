@@ -18,6 +18,10 @@ export const motionMembers = (s: LedgerState): PlayerId[] =>
     .filter((p) => s.acted[p.id])
     .map((p) => p.id);
 
+/** Nobody else takes part, so every motion of `me` passes on the spot (the UI then skips the voting wording). */
+export const isSoloMember = (s: LedgerState, me: PlayerId | null | undefined): boolean =>
+  !!me && motionMembers(s).every((id) => id === me);
+
 /**
  * Voters by kind (ADR 0002): someone else's cup n−2, one's own n−1, adjustments all but the player.
  * `includeInactive` applies only the per-kind exclusions to every known player (for checking stale lists).

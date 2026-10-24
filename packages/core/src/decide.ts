@@ -16,7 +16,7 @@ import { asEventId, asPlayerId, type EventId, type GroupId, type PlayerId } from
 import { computeCups, judgeLateness } from './judge';
 import type { Player, PlayerAppearance, PlayerPatch, PlayerRole } from './player';
 import { MAX_CUPS_PER_RECORD, RETRACT_WINDOW_MINUTES } from './policy';
-import { motionIssue, motionVoters } from './motionRules';
+import { isSoloMember, motionIssue, motionVoters } from './motionRules';
 import { err, ok, type Result } from './result';
 import { validateRuleset, type Ruleset } from './ruleset';
 import {
@@ -559,7 +559,8 @@ function proposeMotion(s: LedgerState, cmd: Cmd<'ProposeMotion'>, ctx: DecideCon
   if (issue) return fail('InvalidInput', issue);
 
   const voters = motionVoters(s, ctx.actorId, motion);
-  if (motion.kind === 'adjust' && voters.length === 0) return fail('NoEligibleVoters', 'Nobody besides the player can vote');
+  // Alone in the group, one's own cups change without a vote; otherwise someone else has to agree.
+  if (motion.kind === 'adjust' && voters.length === 0 && !isSoloMember(s, ctx.actorId)) return fail('NoEligibleVoters', 'Nobody besides the player can vote');
 
   const ttl = currentRuleset(s).waivePolicy.ttlHours;
   const proposed = make({ type: 'MotionProposed', motion, voters, expiresAt: addHours(ctx.now, ttl) });

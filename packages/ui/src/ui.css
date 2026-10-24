@@ -379,6 +379,110 @@ input[type='color'] {
   min-width: 0;
 }
 
+/* Settings that fit in half the width, two per row; .cm-span takes the whole row. */
+.cm-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px;
+  align-items: start;
+}
+
+.cm-grid2 > .cm-span {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 340px) {
+  .cm-grid2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Calendar ─────────────────────────────────────────────── */
+
+.cm-month-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cm-month-title {
+  margin: 0;
+  font-size: 16px;
+}
+
+.cm-month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.cm-month-weekday {
+  text-align: center;
+  font-size: 12px;
+  color: var(--cm-text-dim);
+  padding-bottom: 2px;
+}
+
+.cm-day {
+  font: inherit;
+  position: relative;
+  min-height: 52px;
+  padding: 4px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: var(--cm-surface);
+  color: var(--cm-text);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.cm-day-num {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cm-day-note {
+  font-size: 10px;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cm-day-vacation {
+  position: absolute;
+  bottom: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--cm-review);
+}
+
+.cm-day.is-off,
+.cm-month-weekday.is-off {
+  color: var(--cm-danger);
+}
+
+.cm-day.is-sat,
+.cm-month-weekday.is-sat {
+  color: #6aa8ff;
+}
+
+.cm-day.is-today {
+  border-color: var(--cm-border);
+  font-weight: 700;
+}
+
+.cm-day[aria-pressed='true'] {
+  border-color: var(--cm-primary);
+  background: rgb(242 166 90 / 0.16);
+}
+
 .cm-date-row {
   display: flex;
   align-items: center;
@@ -753,19 +857,27 @@ input[type='color'] {
   border-color: var(--cm-danger);
 }
 
+/* One column template for the header, every member row and the add form, so each field lines up. */
 .cm-player-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) 44px 108px 40px;
   align-items: center;
   gap: 8px;
 }
 
-.cm-player-row .cm-input {
-  flex: 1;
+.cm-player-head {
+  font-size: 12px;
+  color: var(--cm-text-dim);
+  margin-bottom: -6px;
 }
 
-/* Keeps the name field the same width in rows without a remove button. */
-.cm-player-row .cm-icon-spacer {
-  visibility: hidden;
+/* The add button takes the start-time and remove columns. */
+.cm-player-add {
+  grid-column: span 2;
+}
+
+.cm-player-actions {
+  padding-left: 20px;
 }
 
 .cm-player-item {
@@ -786,9 +898,9 @@ input[type='color'] {
   background: rgb(235 87 87 / 0.12);
 }
 
-.cm-player-row input[type='time'] {
-  flex: none;
-  width: 108px;
+.cm-player-row .cm-input {
+  width: 100%;
+  min-width: 0;
 }
 
 .cm-tiers {

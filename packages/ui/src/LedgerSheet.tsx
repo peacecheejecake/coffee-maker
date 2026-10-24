@@ -1,4 +1,5 @@
 import {
+  isSoloMember,
   lateRecordsOf,
   minutesBetween,
   openProposal,
@@ -84,11 +85,12 @@ function LedgerBody({ playerId, onCorrect, onOpenBallots, proposeFor }: LedgerSh
 
 function AdjustToggle({ playerId }: { playerId: PlayerId }) {
   const t = useT();
+  const solo = useLedger((s) => isSoloMember(s.ledger, s.me));
   const [open, setOpen] = useState(false);
   return (
     <div>
       <button type="button" className="cm-button cm-button-ghost" aria-expanded={open} onClick={() => setOpen((x) => !x)}>
-        {t('ledger.adjust')}
+        {t(solo ? 'ledger.adjustSolo' : 'ledger.adjust')}
       </button>
       {open && (
         <div className="cm-inset">

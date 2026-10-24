@@ -1,4 +1,5 @@
 import {
+  isSoloMember,
   MAX_CUPS_PER_RECORD,
   motionStatus,
   outstanding,
@@ -129,6 +130,7 @@ export function AdjustForm({ playerId, onDone }: { playerId: PlayerId; onDone: (
   const run = useCommand();
   const feedback = useMotionFeedback();
   const owed = useLedger((s) => outstanding(s.ledger, playerId));
+  const solo = useLedger((s) => isSoloMember(s.ledger, s.me));
   const [delta, setDelta] = useState(1);
   const [reason, setReason] = useState('');
   return (
@@ -142,7 +144,7 @@ export function AdjustForm({ playerId, onDone }: { playerId: PlayerId; onDone: (
         onDone();
       }}
     >
-      <p className="cm-muted">{t('adjust.hint')}</p>
+      <p className="cm-muted">{t(solo ? 'adjust.hintSolo' : 'adjust.hint')}</p>
       <Stepper
         label={t('adjust.delta')}
         value={delta}
@@ -155,7 +157,7 @@ export function AdjustForm({ playerId, onDone }: { playerId: PlayerId; onDone: (
         <input className="cm-input" required maxLength={80} value={reason} onChange={(e) => setReason(e.target.value)} />
       </Field>
       <button type="submit" className="cm-button cm-button-primary" disabled={!reason.trim() || delta === 0}>
-        {t('adjust.submit')}
+        {t(solo ? 'adjust.submitSolo' : 'adjust.submit')}
       </button>
     </form>
   );

@@ -2,6 +2,7 @@ import {
   activePlayers,
   computeCups,
   currentRuleset,
+  isSoloMember,
   judgeLateness,
   RULESET_LIMITS,
   toMinutes,
@@ -59,6 +60,8 @@ function RulesEditor() {
   const { startsOn } = ledger.attendance;
   const stage = !attendance ? 'owner' : !startsOn ? 'adopt' : 'propose';
   const canEdit = stage === 'propose' || isOwner;
+  // Alone, a rule change passes on the spot, so it reads as a plain save.
+  const solo = isSoloMember(ledger, me);
   const [confirmAdopt, setConfirmAdopt] = useState(false);
 
   const cupsFor = (rs: Ruleset) => {
@@ -84,7 +87,9 @@ function RulesEditor() {
     }
     if (stage === 'propose') {
       const d = await run({ type: 'ProposeMotion', motion: { kind: 'ruleset', ruleset: draft } });
-      if (d.ok) feedback(d.value[0]?.id);
+      if (!d.ok) return;
+      if (solo) toast(t('settings.saved'));
+      else feedback(d.value[0]?.id);
       return;
     }
     const d = await run({ type: 'ChangeRuleset', ruleset: draft });
@@ -95,9 +100,10 @@ function RulesEditor() {
     <section className="cm-section" aria-labelledby="rules-h">
       <h3 id="rules-h">{stage === 'adopt' ? t('rules.adoptTitle') : t('settings.rules')}</h3>
       {stage === 'owner' && !isOwner && <p className="cm-muted">{t('settings.ownerOnly')}</p>}
-      {stage === 'adopt' && <p className="cm-muted">{isOwner ? t('rules.adoptBody') : t('rules.waitingOwner')}</p>}
-      {stage === 'propose' && startsOn && <p className="cm-muted">{t('rules.inForce', { date: formatWorkDate(startsOn) })}</p>}
+      {stage === 'adopt' && <p className="cm-muted">{isOwner ? t(solo ? 'rules.adoptBodySolo' : 'rules.adoptBody') : t('rules.waitingOwner')}</p>}
+      {stage === 'propose' && startsOn && <p className="cm-muted">{t(solo ? 'rules.inForceSolo' : 'rules.inForce', { date: formatWorkDate(startsOn) })}</p>}
       <fieldset disabled={!canEdit} className="cm-form">
+        <div className="cm-grid2">
         <Field label={t('settings.startTime')}>
           <input
             type="time"
@@ -137,7 +143,9 @@ function RulesEditor() {
             />
           </Field>
         ) : (
-          <TierEditor tiers={tiers} onChange={setTiers} />
+          <div className="cm-span">
+            <TierEditor tiers={tiers} onChange={setTiers} />
+          </div>
         )}
         <Field label={t('settings.waiveTtl')} hint={t('settings.waivePolicy')}>
           <Stepper
@@ -159,6 +167,7 @@ function RulesEditor() {
             onChange={(publicHolidays) => setDraft({ ...draft, publicHolidays })}
           />
         </Field>
+        </div>
         <p className="cm-muted">{t('settings.timezone', { tz: draft.timezone })}</p>
         {dirty && (
           <div className="cm-preview is-late" role="status">
@@ -188,7 +197,7 @@ function RulesEditor() {
           disabled={(stage !== 'adopt' && !dirty) || issues.length > 0}
           onClick={() => (stage === 'adopt' ? setConfirmAdopt(true) : void save())}
         >
-          {stage === 'adopt' ? t('rules.adopt') : stage === 'propose' ? t('rules.propose') : t('action.save')}
+          {stage === 'adopt' ? t('rules.adopt') : stage === 'propose' && !solo ? t('rules.propose') : t('action.save')}
         </button>
         {confirmAdopt && (
           <ConfirmBox
@@ -284,21 +293,30 @@ function PlayersEditor() {
     }
   }
 
+  // Every row, the header and the add form share one column template (.cm-player-row), so fields line up.
   return (
     <section className="cm-section" aria-labelledby="players-h">
       <h3 id="players-h">{t('settings.players')}</h3>
+      <div className="cm-player-row cm-player-head" aria-hidden>
+        <span />
+        <span>{t('settings.playerName')}</span>
+        <span>{t('settings.playerColor')}</span>
+        <span>{t('settings.playerStart')}</span>
+        <span />
+      </div>
       <ul className="cm-list">
         {players.map((p) => (
           <PlayerRow key={p.id} player={p} canEdit={isOwner || p.id === me} canArchive={isOwner && p.id !== me} />
         ))}
       </ul>
       <form
-        className="cm-row cm-wrap"
+        className="cm-player-row"
         onSubmit={(e) => {
           e.preventDefault();
           void add();
         }}
       >
+        <ColorDot color={color} />
         <input
           className="cm-input"
           required
@@ -309,7 +327,7 @@ function PlayersEditor() {
           onChange={(e) => setName(e.target.value)}
         />
         <input type="color" aria-label={t('settings.playerColor')} value={color} onChange={(e) => setColor(e.target.value)} />
-        <button type="submit" className="cm-button" disabled={!name.trim()}>
+        <button type="submit" className="cm-button cm-player-add" disabled={!name.trim()}>
           + {t('settings.addPlayer')}
         </button>
       </form>
@@ -325,6 +343,11 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
   const [start, setStart] = useState(player.startTimeOverride ?? '');
   const [confirmArchive, setConfirmArchive] = useState(false);
   const dirty = name !== player.name || color !== player.appearance.color || start !== (player.startTimeOverride ?? '');
+  const revert = () => {
+    setName(player.name);
+    setColor(player.appearance.color);
+    setStart(player.startTimeOverride ?? '');
+  };
 
   return (
     <li className="cm-player-item">
@@ -348,21 +371,6 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
           value={start}
           onChange={(e) => setStart(e.target.value)}
         />
-        {dirty && (
-          <button
-            type="button"
-            className="cm-button"
-            onClick={() =>
-              void run({
-                type: 'UpdatePlayer',
-                playerId: player.id,
-                patch: { name, appearance: { ...player.appearance, color }, startTimeOverride: start || null },
-              })
-            }
-          >
-            {t('action.save')}
-          </button>
-        )}
         {canArchive ? (
           <button
             type="button"
@@ -377,10 +385,30 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
             </svg>
           </button>
         ) : (
-          // Same width as the remove button, so every name field lines up.
-          <span className="cm-icon-button cm-icon-spacer" aria-hidden />
+          <span aria-hidden />
         )}
       </div>
+      {/* Save sits under the row so an edit never shifts the columns. */}
+      {dirty && (
+        <div className="cm-row cm-player-actions">
+          <button
+            type="button"
+            className="cm-button cm-button-primary"
+            onClick={() =>
+              void run({
+                type: 'UpdatePlayer',
+                playerId: player.id,
+                patch: { name, appearance: { ...player.appearance, color }, startTimeOverride: start || null },
+              })
+            }
+          >
+            {t('action.save')}
+          </button>
+          <button type="button" className="cm-button cm-button-ghost" onClick={revert}>
+            {t('action.cancel')}
+          </button>
+        </div>
+      )}
       {confirmArchive && (
         <div className="cm-warning" role="alert">
           <p>
@@ -454,6 +482,7 @@ function DeviceSection() {
   return (
     <section className="cm-section" aria-labelledby="device-h">
       <h3 id="device-h">{t('settings.device')}</h3>
+      <div className="cm-grid2">
       {/* In a shared group the device user is the claimed account, not a free choice. */}
       {sync === 'local' && (
         <Field label={t('settings.me')}>
@@ -490,6 +519,7 @@ function DeviceSection() {
           onChange={(v) => setSound(v === 'on')}
         />
       </Field>
+      </div>
     </section>
   );
 }
