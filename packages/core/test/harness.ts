@@ -83,6 +83,10 @@ export function createLedger() {
         ledger.run(actor, { type: 'AddPlayer', id, name: `Player ${id}`, appearance: { color: '#888' } });
       }
     },
+    /** Players added by someone else start using the app themselves (see LedgerState.acted). */
+    claim(...ids: PlayerId[]) {
+      for (const id of ids) if (!state.acted[id]) ledger.run(id, { type: 'ClaimSelf' });
+    },
     /** Records a late arrival for `player` (recorded by `by`, default the owner); returns the event id. */
     late(player: PlayerId, arrivedAt = '09:10', opts: { by?: PlayerId; workDate?: string; cups?: number } = {}) {
       const [e] = ledger.run(opts.by ?? A, {

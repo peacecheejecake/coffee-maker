@@ -13,7 +13,10 @@ import {
 import type { Tone } from '@coffee/theme';
 import { useEffect, useMemo, useState } from 'react';
 import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
-import { ColorDot, Field, Segmented, Sheet, Stepper } from './primitives';
+import { formatWorkDate } from './format';
+import { GroupSection } from './GroupSettings';
+import { useMotionFeedback } from './Motions';
+import { ColorDot, ConfirmBox, Field, Segmented, Sheet, Stepper } from './primitives';
 
 export const PALETTE_CHOICES = ['#e57373', '#64b5f6', '#81c784', '#ffb74d', '#ba68c8', '#4dd0e1', '#f06292', '#aed581', '#ffd54f', '#90a4ae'];
 
@@ -25,6 +28,7 @@ export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenCha
         <div className="cm-stack">
           <InviteSection />
           <AccountSection />
+          <GroupSection />
           <RulesEditor />
           <PlayersEditor />
           <DeviceSection />
@@ -45,9 +49,17 @@ function RulesEditor() {
   const me = useLedger((s) => s.me);
   const saved = currentRuleset(ledger);
   const [draft, setDraft] = useState<Ruleset>(saved);
+  const feedback = useMotionFeedback();
+  const api = useStoreApi();
   const isOwner = !!me && ledger.players[me]?.role === 'owner';
   const issues = useMemo(() => validateRuleset(draft), [draft]);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
+  // Attendance mode: the owner confirms the first rules once; after that anyone proposes changes for a vote.
+  const attendance = ledger.mode === 'attendance';
+  const { startsOn } = ledger.attendance;
+  const stage = !attendance ? 'owner' : !startsOn ? 'adopt' : 'propose';
+  const canEdit = stage === 'propose' || isOwner;
+  const [confirmAdopt, setConfirmAdopt] = useState(false);
 
   const cupsFor = (rs: Ruleset) => {
     const j = judgeLateness(addMinutes(rs.defaultStartTime, PREVIEW_MINUTES), rs.defaultStartTime, rs.graceMinutes);
@@ -63,15 +75,29 @@ function RulesEditor() {
   const setTiers = (next: CupTier[]) => setDraft({ ...draft, cupRule: { mode: 'tiered', tiers: next } });
 
   async function save() {
+    if (stage === 'adopt') {
+      setConfirmAdopt(false);
+      const d = await run({ type: 'AdoptRules', ruleset: draft });
+      const starts = d.ok ? api.getState().ledger.attendance.startsOn : undefined;
+      if (starts) toast(t('rules.adopted', { date: formatWorkDate(starts) }));
+      return;
+    }
+    if (stage === 'propose') {
+      const d = await run({ type: 'ProposeMotion', motion: { kind: 'ruleset', ruleset: draft } });
+      if (d.ok) feedback(d.value[0]?.id);
+      return;
+    }
     const d = await run({ type: 'ChangeRuleset', ruleset: draft });
     if (d.ok) toast(t('settings.saved'));
   }
 
   return (
     <section className="cm-section" aria-labelledby="rules-h">
-      <h3 id="rules-h">{t('settings.rules')}</h3>
-      {!isOwner && <p className="cm-muted">{t('settings.ownerOnly')}</p>}
-      <fieldset disabled={!isOwner} className="cm-form">
+      <h3 id="rules-h">{stage === 'adopt' ? t('rules.adoptTitle') : t('settings.rules')}</h3>
+      {stage === 'owner' && !isOwner && <p className="cm-muted">{t('settings.ownerOnly')}</p>}
+      {stage === 'adopt' && <p className="cm-muted">{isOwner ? t('rules.adoptBody') : t('rules.waitingOwner')}</p>}
+      {stage === 'propose' && startsOn && <p className="cm-muted">{t('rules.inForce', { date: formatWorkDate(startsOn) })}</p>}
+      <fieldset disabled={!canEdit} className="cm-form">
         <Field label={t('settings.startTime')}>
           <input
             type="time"
@@ -122,6 +148,17 @@ function RulesEditor() {
             onChange={(ttlHours) => setDraft({ ...draft, waivePolicy: { ...draft.waivePolicy, ttlHours } })}
           />
         </Field>
+        <Field label={t('calendar.publicHolidays')}>
+          <Segmented<'KR' | 'none'>
+            label={t('calendar.publicHolidays')}
+            value={draft.publicHolidays ?? 'KR'}
+            options={[
+              { value: 'KR', label: t('calendar.publicHolidays.on') },
+              { value: 'none', label: t('calendar.publicHolidays.off') },
+            ]}
+            onChange={(publicHolidays) => setDraft({ ...draft, publicHolidays })}
+          />
+        </Field>
         <p className="cm-muted">{t('settings.timezone', { tz: draft.timezone })}</p>
         {dirty && (
           <div className="cm-preview is-late" role="status">
@@ -148,11 +185,19 @@ function RulesEditor() {
         <button
           type="button"
           className="cm-button cm-button-primary"
-          disabled={!dirty || issues.length > 0}
-          onClick={() => void save()}
+          disabled={(stage !== 'adopt' && !dirty) || issues.length > 0}
+          onClick={() => (stage === 'adopt' ? setConfirmAdopt(true) : void save())}
         >
-          {t('action.save')}
+          {stage === 'adopt' ? t('rules.adopt') : stage === 'propose' ? t('rules.propose') : t('action.save')}
         </button>
+        {confirmAdopt && (
+          <ConfirmBox
+            message={t('rules.adoptConfirm')}
+            confirmLabel={t('rules.adopt')}
+            onConfirm={() => void save()}
+            onCancel={() => setConfirmAdopt(false)}
+          />
+        )}
       </fieldset>
     </section>
   );
@@ -278,54 +323,82 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
   const [name, setName] = useState(player.name);
   const [color, setColor] = useState(player.appearance.color);
   const [start, setStart] = useState(player.startTimeOverride ?? '');
+  const [confirmArchive, setConfirmArchive] = useState(false);
   const dirty = name !== player.name || color !== player.appearance.color || start !== (player.startTimeOverride ?? '');
 
   return (
-    <li className="cm-player-row">
-      <ColorDot color={color} />
-      <input
-        className="cm-input"
-        aria-label={t('settings.playerName')}
-        disabled={!canEdit}
-        value={name}
-        maxLength={20}
-        onChange={(e) => setName(e.target.value)}
-      />
-      <input type="color" aria-label={t('settings.playerColor')} disabled={!canEdit} value={color} onChange={(e) => setColor(e.target.value)} />
-      <input
-        type="time"
-        className="cm-input"
-        aria-label={t('settings.playerStart')}
-        title={t('settings.playerStart')}
-        disabled={!canEdit}
-        value={start}
-        onChange={(e) => setStart(e.target.value)}
-      />
-      {dirty && (
-        <button
-          type="button"
-          className="cm-button"
-          onClick={() =>
-            void run({
-              type: 'UpdatePlayer',
-              playerId: player.id,
-              patch: { name, appearance: { ...player.appearance, color }, startTimeOverride: start || null },
-            })
-          }
-        >
-          {t('action.save')}
-        </button>
-      )}
-      {canArchive && (
-        <button
-          type="button"
-          className="cm-icon-button"
-          aria-label={`${player.name} ${t('settings.archive')}`}
-          title={t('settings.archive')}
-          onClick={() => void run({ type: 'UpdatePlayer', playerId: player.id, patch: { archived: true } })}
-        >
-          ⤓
-        </button>
+    <li className="cm-player-item">
+      <div className="cm-player-row">
+        <ColorDot color={color} />
+        <input
+          className="cm-input"
+          aria-label={t('settings.playerName')}
+          disabled={!canEdit}
+          value={name}
+          maxLength={20}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <input type="color" aria-label={t('settings.playerColor')} disabled={!canEdit} value={color} onChange={(e) => setColor(e.target.value)} />
+        <input
+          type="time"
+          className="cm-input"
+          aria-label={t('settings.playerStart')}
+          title={t('settings.playerStart')}
+          disabled={!canEdit}
+          value={start}
+          onChange={(e) => setStart(e.target.value)}
+        />
+        {dirty && (
+          <button
+            type="button"
+            className="cm-button"
+            onClick={() =>
+              void run({
+                type: 'UpdatePlayer',
+                playerId: player.id,
+                patch: { name, appearance: { ...player.appearance, color }, startTimeOverride: start || null },
+              })
+            }
+          >
+            {t('action.save')}
+          </button>
+        )}
+        {canArchive ? (
+          <button
+            type="button"
+            className="cm-icon-button is-remove"
+            aria-label={`${player.name} ${t('settings.archive')}`}
+            aria-expanded={confirmArchive}
+            title={t('settings.archive')}
+            onClick={() => setConfirmArchive((c) => !c)}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
+              <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        ) : (
+          // Same width as the remove button, so every name field lines up.
+          <span className="cm-icon-button cm-icon-spacer" aria-hidden />
+        )}
+      </div>
+      {confirmArchive && (
+        <div className="cm-warning" role="alert">
+          <p>
+            {player.name} · {t('settings.archive')}?
+          </p>
+          <div className="cm-row">
+            <button
+              type="button"
+              className="cm-button cm-button-danger"
+              onClick={() => void run({ type: 'UpdatePlayer', playerId: player.id, patch: { archived: true } })}
+            >
+              {t('settings.archive')}
+            </button>
+            <button type="button" className="cm-button cm-button-ghost" onClick={() => setConfirmArchive(false)}>
+              {t('action.cancel')}
+            </button>
+          </div>
+        </div>
       )}
     </li>
   );

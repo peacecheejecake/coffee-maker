@@ -1,10 +1,12 @@
+import { isWorkdayFor } from './calendar';
 import { creditGrade, type CreditGrade } from './credit';
 import type { EventId, PlayerId } from './ids';
 import { computeCups, judgeLateness, type Judgement } from './judge';
 import type { Player } from './player';
 import { DEFAULT_RULESET, type Ruleset } from './ruleset';
-import type { LateRecord, LedgerState, Redemption, WaiveProposal } from './state';
-import type { HHmm, Instant, WorkDate } from './time';
+import { motionStatus } from './motion';
+import { attendanceKey, type LateRecord, type LedgerState, type MotionRecord, type Redemption, type WaiveProposal } from './state';
+import { addDays, wallTimeAt, type HHmm, type Instant, type WorkDate } from './time';
 import { proposalStatus } from './waive';
 
 export const activePlayers = (s: LedgerState): Player[] =>
@@ -161,3 +163,48 @@ export const awaitingReceipt = (s: LedgerState, playerId: PlayerId): Redemption[
 /** Who gets which cup: round-robin over recipients; recipients beyond the cup count get nothing. */
 export const distribute = <T>(cups: readonly T[], recipients: readonly PlayerId[]): { cup: T; to: PlayerId }[] =>
   recipients.length === 0 ? [] : cups.map((cup, i) => ({ cup, to: recipients[i % recipients.length]! }));
+
+// ── modes, attendance & motions ─────────────────────────────────────────────
+
+/** Attendance mode with the common rules confirmed: check-ins and missed days count from `startsOn`. */
+export const attendanceInForce = (s: LedgerState): boolean => s.mode === 'attendance' && s.attendance.startsOn !== undefined;
+
+export const attendanceOn = (s: LedgerState, playerId: PlayerId, date: WorkDate): 'checkIn' | 'missed' | undefined =>
+  s.attendance.days[attendanceKey(playerId, date)];
+
+/** How far back a device settles missed days; older gaps are left alone. */
+export const SETTLE_LOOKBACK_DAYS = 62;
+const SETTLE_AFTER = '00:05';
+
+/** Work days that ended without a check-in and are not settled yet, oldest first. */
+export function missedDays(s: LedgerState, now: Instant): { playerId: PlayerId; workDate: WorkDate }[] {
+  const { startsOn } = s.attendance;
+  if (!attendanceInForce(s) || !startsOn) return [];
+  const wall = wallTimeAt(now, currentRuleset(s).timezone);
+  // A few minutes past midnight before settling yesterday: the server refuses days that are not over by its
+  // clock, and a device clock running fast would otherwise send events it rejects.
+  const last = wall.hhmm < SETTLE_AFTER ? addDays(wall.workDate, -1) : wall.workDate;
+  const earliest = addDays(wall.workDate, -SETTLE_LOOKBACK_DAYS);
+  const out: { playerId: PlayerId; workDate: WorkDate }[] = [];
+  for (let date = startsOn > earliest ? startsOn : earliest; date < last; date = addDays(date, 1)) {
+    const rs = rulesetAt(s, date);
+    for (const p of activePlayers(s)) {
+      if (!s.acted[p.id]) continue;
+      const joined = s.joinedOn[p.id];
+      if (joined !== undefined && joined >= date) continue;
+      if (attendanceOn(s, p.id, date) !== undefined) continue;
+      if (isWorkdayFor(s, rs, p.id, date)) out.push({ playerId: p.id, workDate: date });
+    }
+  }
+  return out;
+}
+
+export const motionsOpen = (s: LedgerState, now: Instant): MotionRecord[] =>
+  s.motionOrder.flatMap((id) => {
+    const m = s.motions[id];
+    return m && motionStatus(m, now) === 'open' ? [m] : [];
+  });
+
+/** Motions waiting for `voterId`'s ballot. */
+export const motionBallotsFor = (s: LedgerState, voterId: PlayerId, now: Instant): MotionRecord[] =>
+  motionsOpen(s, now).filter((m) => m.voters.includes(voterId) && m.votes[voterId] === undefined);

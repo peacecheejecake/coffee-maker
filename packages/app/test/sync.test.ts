@@ -53,7 +53,7 @@ function device(server: FakeServer, userId: string, net = makeNet(true)) {
 async function twoDevices() {
   const server = new FakeServer(clock.now);
   const a = device(server, 'userA');
-  await a.store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, timeZone: 'Asia/Seoul' });
+  await a.store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, mode: 'shared', timeZone: 'Asia/Seoul' });
   await flush();
   const code = a.store.getState().inviteCode!;
   const b = device(server, 'userB');
@@ -69,7 +69,7 @@ describe('sync', () => {
   it('creating a group registers it and confirms the first events', async () => {
     const server = new FakeServer(clock.now);
     const { store } = device(server, 'userA');
-    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' } });
+    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, mode: 'shared' });
     await flush();
     expect(store.getState().inviteCode).toBe('INV1');
     expect(store.getState().sync).toBe('synced');
@@ -118,7 +118,7 @@ describe('sync', () => {
   it('the server rejects a vote after the deadline; it disappears locally and is reported', async () => {
     const server = new FakeServer(clock.now);
     const a = device(server, 'userA').store;
-    await a.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' } });
+    await a.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, mode: 'shared' });
     await flush();
     const code = a.getState().inviteCode!;
     const [b, c] = [device(server, 'userB'), device(server, 'userC')];
@@ -152,7 +152,7 @@ describe('sync', () => {
     const server = new FakeServer(clock.now);
     const net = makeNet(false);
     const { store } = device(server, 'userA', net);
-    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' } });
+    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, mode: 'shared' });
     await store.getState().dispatch({ type: 'AddPlayer', id: asPlayerId('x'), name: '민수', appearance: { color: '#0f0' } });
     await flush();
     expect(server.groups.size).toBe(0);
@@ -177,7 +177,7 @@ describe('sync', () => {
   it('local-only stores never sync', async () => {
     const store = createLedgerStore({ ...createMemoryStores(), clock });
     stops.push(startSync(store));
-    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' } });
+    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, mode: 'shared' });
     expect(store.getState().sync).toBe('local');
   });
 });

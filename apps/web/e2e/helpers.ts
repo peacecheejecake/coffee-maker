@@ -45,11 +45,13 @@ export async function startDemo(page: Page) {
   await settle(page);
 }
 
-export async function createGroup(page: Page, name: string) {
+/** Creates a group in the shared-ledger mode most specs exercise; `attendance` for the self check-in flow. */
+export async function createGroup(page: Page, name: string, mode: 'shared' | 'attendance' = 'shared') {
   await page.goto('/');
   await page.getByLabel('내 이름').fill(name);
+  await page.getByRole('radio', { name: mode === 'shared' ? '공동 장부' : '자진 출두' }).click();
   await page.getByRole('button', { name: '관할 구역 개설' }).click();
-  await expect(page.getByRole('button', { name: /업보 청구/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: mode === 'shared' ? /업보 청구/ : /규정 확정 대기/ })).toBeVisible();
   await sceneReady(page);
 }
 

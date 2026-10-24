@@ -1,4 +1,4 @@
-import { isHHmm, type HHmm } from './time';
+import { isHHmm, isTimeZone, type HHmm } from './time';
 
 export type CupRule =
   | { mode: 'fixed'; cups: number }
@@ -20,6 +20,8 @@ export interface Ruleset {
   waivePolicy: WaivePolicy;
   /** IANA timezone used to derive work dates and wall-clock times. */
   timezone: string;
+  /** Built-in statutory holidays that excuse check-ins. Missing in rulesets from before modes existed: 'KR'. */
+  publicHolidays?: 'KR' | 'none';
 }
 
 export const DEFAULT_RULESET: Ruleset = {
@@ -29,6 +31,7 @@ export const DEFAULT_RULESET: Ruleset = {
   requireReceipt: true,
   waivePolicy: { mode: 'unanimous', ttlHours: 72 },
   timezone: 'Asia/Seoul',
+  publicHolidays: 'KR',
 };
 
 export const RULESET_LIMITS = {
@@ -52,7 +55,10 @@ export function validateRuleset(rs: Ruleset): RulesetIssue[] {
 
   if (!isHHmm(rs.defaultStartTime)) add('defaultStartTime', 'must be HH:mm');
   if (!inRange(rs.graceMinutes, RULESET_LIMITS.graceMinutes)) add('graceMinutes', 'out of range');
-  if (rs.timezone.trim() === '') add('timezone', 'required');
+  if (!isTimeZone(rs.timezone)) add('timezone', 'unknown timezone');
+  if (rs.publicHolidays !== undefined && rs.publicHolidays !== 'KR' && rs.publicHolidays !== 'none') {
+    add('publicHolidays', 'must be KR or none');
+  }
   if (!inRange(rs.waivePolicy.ttlHours, RULESET_LIMITS.waiveTtlHours)) add('waivePolicy.ttlHours', 'out of range');
 
   const rule = rs.cupRule;
@@ -78,4 +84,17 @@ export function validateRuleset(rs: Ruleset): RulesetIssue[] {
     });
   }
   return issues;
+}
+
+/** The most cups one day can cost: what a missed check-in is charged. */
+export const maxCups = (rule: CupRule): number =>
+  rule.mode === 'fixed' ? rule.cups : Math.max(...rule.tiers.map((t) => t.cups));
+
+/** For events from other devices: any shape, never throws. */
+export function isValidRuleset(rs: unknown): rs is Ruleset {
+  try {
+    return typeof rs === 'object' && rs !== null && validateRuleset(rs as Ruleset).length === 0;
+  } catch {
+    return false;
+  }
 }

@@ -9,7 +9,7 @@ describe('IndexedDB stores', () => {
     const name = `t-${Math.random()}`;
     const first = createLocalIdbStores(name);
     const store = createLedgerStore(first);
-    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, timeZone: 'Asia/Seoul' });
+    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, mode: 'shared', timeZone: 'Asia/Seoul' });
     await store.getState().dispatch({ type: 'AddPlayer', id: asPlayerId('B'), name: '민수', appearance: { color: '#0f0' } });
     await store.getState().dispatch({ type: 'RecordArrival', playerId: asPlayerId('B'), workDate: '2026-10-20', arrivedAt: '09:30' });
 

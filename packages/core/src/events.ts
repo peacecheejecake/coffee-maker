@@ -23,6 +23,20 @@ export type StampQuality = 'clean' | 'faint' | 'smudged';
 export type RedeemOrder = 'newest' | 'oldest';
 export type Vote = 'approve' | 'reject';
 
+/** `shared`: anyone records anyone's lateness. `attendance` (자진 출두): everyone checks themselves in. */
+export type GroupMode = 'shared' | 'attendance';
+
+/** What a motion changes once every voter approves (ADR 0002). */
+export type Motion =
+  | { kind: 'ruleset'; ruleset: Ruleset }
+  | { kind: 'holiday'; date: WorkDate; name: string; off: boolean }
+  /** Adds (delta > 0) or removes (delta < 0) cups regardless of any date. */
+  | { kind: 'adjust'; playerId: PlayerId; delta: number; reason: string }
+  /** One cup paid back by the debtor. */
+  | { kind: 'redeem'; debtorId: PlayerId; recipients: PlayerId[]; stampQuality: StampQuality; evidence?: { assetId: string } };
+
+export type MotionKind = Motion['kind'];
+
 export interface LateChanges {
   scheduledStart?: HHmm;
   arrivedAt?: HHmm;
@@ -80,11 +94,31 @@ export type EventPayload =
     }
   | { type: 'RedemptionAcknowledged'; redemptionId: EventId }
   /** Undo of a redemption by whoever recorded it, within the retract window. */
-  | { type: 'RedemptionReverted'; redemptionId: EventId };
+  | { type: 'RedemptionReverted'; redemptionId: EventId }
+  /** The account behind this device now acts as the actor (after claiming a player someone else added). */
+  | { type: 'PlayerClaimed' }
+  | { type: 'ModeChanged'; mode: GroupMode }
+  | { type: 'OwnerTransferred'; to: PlayerId }
+  /** The explicit first confirmation of the common rules in attendance mode. */
+  | { type: 'RulesAdopted'; ruleset: Ruleset }
+  /** The actor checks in for `workDate`; the arrival time is the event's own (server) time. */
+  | { type: 'CheckedIn'; workDate: WorkDate }
+  /** Issued by any member's device once `workDate` is over; id is `missedEventId(...)`. */
+  | { type: 'AttendanceMissed'; playerId: PlayerId; workDate: WorkDate }
+  | { type: 'HolidaySet'; date: WorkDate; name: string; off: boolean }
+  /** The actor's own vacation; may be registered after the fact. */
+  | { type: 'VacationSet'; date: WorkDate; on: boolean }
+  | { type: 'MotionProposed'; motion: Motion; voters: PlayerId[]; expiresAt: Instant }
+  | { type: 'MotionVoted'; motionId: EventId; vote: Vote }
+  | { type: 'MotionWithdrawn'; motionId: EventId };
 
 export type LedgerEvent = EventMeta & EventPayload;
 export type EventType = LedgerEvent['type'];
 export type EventOf<T extends EventType> = Extract<LedgerEvent, { type: T }>;
+
+/** Deterministic id so every device that settles the same missed day produces the same event. */
+export const missedEventId = (groupId: GroupId, playerId: PlayerId, workDate: WorkDate): EventId =>
+  `miss:${groupId}:${playerId}:${workDate}` as EventId;
 
 /** The instant used for time-window rules: server time once known, client time before that. */
 export const effectiveAt = (e: EventMeta): Instant => e.serverAt ?? e.at;

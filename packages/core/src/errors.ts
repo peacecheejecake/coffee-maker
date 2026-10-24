@@ -16,7 +16,13 @@ export type DomainErrorCode =
   | 'NotAVoter'
   | 'AlreadyVoted'
   | 'NothingToRedeem'
-  | 'RedeemExceedsDebt';
+  | 'RedeemExceedsDebt'
+  /** Not available in the group's current mode. */
+  | 'WrongMode'
+  | 'RulesNotAdopted'
+  | 'AlreadyAdopted'
+  | 'AlreadyCheckedIn'
+  | 'NotAWorkday';
 
 export interface DomainError {
   code: DomainErrorCode;

@@ -1,6 +1,8 @@
-import { activePlayers, awaitingReceipt, ballotsFor, outstanding, type EventId, type PlayerId } from '@coffee/core';
+import { activePlayers, awaitingReceipt, ballotsFor, motionBallotsFor, outstanding, type EventId, type PlayerId } from '@coffee/core';
 import { useState, type ReactNode } from 'react';
+import { CheckInButton, useSettleAttendance } from './Attendance';
 import { BallotsSheet } from './BallotsSheet';
+import { CalendarSheet } from './CalendarSheet';
 import { useLedger, useT } from './context';
 import { CorrectSheet } from './CorrectSheet';
 import { LedgerSheet } from './LedgerSheet';
@@ -19,6 +21,7 @@ type SheetState =
   | { kind: 'correct'; targetId: EventId; returnTo?: PlayerId }
   | { kind: 'ballots' }
   | { kind: 'redeem' }
+  | { kind: 'calendar' }
   | { kind: 'settings' };
 
 export interface SceneSlotProps {
@@ -43,13 +46,16 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
   const sync = useLedger((s) => s.sync);
   const [sheet, setSheet] = useState<SheetState>({ kind: 'none' });
   const close = () => setSheet({ kind: 'none' });
+  useSettleAttendance();
 
   if (status === 'idle' || status === 'loading') return <div className="cm-center">{t('app.loading')}</div>;
   if (status === 'error') return <div className="cm-center">{t('app.loadError', { message: loadError ?? '' })}</div>;
   if (!groupId) return <Onboarding {...(onDemo && { onDemo })} />;
   if (!me) return <ClaimScreen />;
 
-  const ballots = ballotsFor(ledger, me, nowIso()).length + awaitingReceipt(ledger, me).length;
+  const ballots =
+    ballotsFor(ledger, me, nowIso()).length + motionBallotsFor(ledger, me, nowIso()).length + awaitingReceipt(ledger, me).length;
+  const attendance = ledger.mode === 'attendance';
   const focusId = sheet.kind === 'ledger' ? sheet.playerId : null;
   const meName = ledger.players[me]?.name ?? '';
 
@@ -85,6 +91,15 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
             )}
           </h1>
           <div className="cm-row">
+            <button
+              type="button"
+              className="cm-pill cm-pill-button"
+              aria-label={t('calendar.open')}
+              title={t('calendar.open')}
+              onClick={() => setSheet({ kind: 'calendar' })}
+            >
+              📅 <span className="cm-hide-narrow">{t('calendar.open')}</span>
+            </button>
             <button type="button" className="cm-pill cm-pill-button" onClick={() => setSheet({ kind: 'ballots' })}>
               ⚖️ {t('hud.ballots')}
               {ballots > 0 && (
@@ -105,9 +120,13 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
           </div>
         </div>
         <div className="cm-hud-bottom">
-          <button type="button" className="cm-button cm-button-primary cm-button-large" onClick={() => setSheet({ kind: 'record' })}>
-            📜 {t('action.record')}
-          </button>
+          {attendance ? (
+            <CheckInButton />
+          ) : (
+            <button type="button" className="cm-button cm-button-primary cm-button-large" onClick={() => setSheet({ kind: 'record' })}>
+              📜 {t('action.record')}
+            </button>
+          )}
           <button type="button" className="cm-button cm-button-large cm-button-secondary" onClick={() => setSheet({ kind: 'redeem' })}>
             🖋 {t('action.redeem')}
           </button>
@@ -142,6 +161,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
       />
       <BallotsSheet open={sheet.kind === 'ballots'} onOpenChange={(o) => !o && close()} />
       <RedeemSheet open={sheet.kind === 'redeem'} onOpenChange={(o) => !o && close()} />
+      <CalendarSheet open={sheet.kind === 'calendar'} onOpenChange={(o) => !o && close()} />
       <SettingsSheet open={sheet.kind === 'settings'} onOpenChange={(o) => !o && close()} />
       <Toasts />
       <FeedToasts />

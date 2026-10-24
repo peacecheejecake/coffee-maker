@@ -17,7 +17,7 @@ function setup(start = Date.parse('2026-10-23T00:12:00Z')) {
 
 async function withGroup() {
   const s = setup();
-  const r = await s.store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, timeZone: 'Asia/Seoul' });
+  const r = await s.store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, mode: 'shared', timeZone: 'Asia/Seoul' });
   expect(r.ok).toBe(true);
   const { dispatch } = s.store.getState();
   await dispatch({ type: 'AddPlayer', id: asPlayerId('B'), name: '민수', appearance: { color: '#0f0' } });
@@ -75,7 +75,7 @@ describe('ledger store', () => {
       seen.push(stores.meta.get('activeGroup').then((stored) => expect(stored).toBe(s.groupId)));
       expect(stores.events.all.map((e) => e.type)).toEqual(['PlayerJoined', 'RulesetChanged']);
     });
-    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' } });
+    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, mode: 'shared' });
     expect(seen).toHaveLength(1);
     await Promise.all(seen);
   });
@@ -164,5 +164,30 @@ describe('ledger store', () => {
     });
     await store.getState().init();
     expect(store.getState()).toMatchObject({ status: 'error', loadError: 'disk' });
+  });
+});
+
+describe('attendance mode', () => {
+  it('is the default for new groups and settles missed days only once they are over', async () => {
+    const s = setup();
+    const { createGroup, dispatch } = s.store.getState();
+    await createGroup({ ownerName: '지원', appearance: { color: '#f00' }, timeZone: 'Asia/Seoul' });
+    expect(s.store.getState().ledger.mode).toBe('attendance');
+    await dispatch({ type: 'AddPlayer', id: asPlayerId('B'), name: '민수', appearance: { color: '#0f0' } });
+    await dispatch({ type: 'AdoptRules', ruleset: s.store.getState().ledger.rulesets.at(-1)!.ruleset });
+
+    s.advance(3 * 86_400_000); // Mon 10-26 09:12
+    await s.store.getState().settleAttendance();
+    expect(s.store.getState().events.some((e) => e.type === 'AttendanceMissed')).toBe(false);
+
+    s.advance(86_400_000); // Tue: Monday is over
+    await s.store.getState().settleAttendance();
+    await s.store.getState().settleAttendance();
+    const missed = s.store.getState().events.filter((e) => e.type === 'AttendanceMissed');
+    // Only the owner: 민수 was added by someone else and has never used the app, so is never charged.
+    expect(missed).toHaveLength(1);
+    const me = s.store.getState().me!;
+    expect(outstanding(s.store.getState().ledger, me)).toBe(1);
+    expect(outstanding(s.store.getState().ledger, asPlayerId('B'))).toBe(0);
   });
 });

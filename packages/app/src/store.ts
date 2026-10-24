@@ -6,11 +6,13 @@ import {
   DEFAULT_RULESET,
   emptyState,
   evolve,
+  missedDays,
   project,
   type Command,
   type Decision,
   type DomainError,
   type GroupId,
+  type GroupMode,
   type LedgerEvent,
   type LedgerState,
   type PlayerAppearance,
@@ -70,7 +72,8 @@ export interface LedgerStoreState {
 export interface LedgerActions {
   /** Loads the active group from storage. */
   init(): Promise<void>;
-  createGroup(input: { ownerName: string; appearance: PlayerAppearance; timeZone?: string }): Promise<Decision>;
+  /** `mode` defaults to attendance (ADR 0002). */
+  createGroup(input: { ownerName: string; appearance: PlayerAppearance; timeZone?: string; mode?: GroupMode }): Promise<Decision>;
   /** Replays prepared events into a fresh, local-only group (demo / import). */
   importGroup(groupId: GroupId, me: PlayerId, events: LedgerEvent[]): Promise<void>;
   /** Joins a shared group by invite code and downloads its ledger. Needs a remote. */
@@ -90,6 +93,11 @@ export interface LedgerActions {
   wallNow(): WallTime;
   /** Current instant from the store's clock. UI time windows must use this, not `new Date()`. */
   nowIso(): string;
+  /**
+   * Attendance mode: records work days that ended without a check-in. Waits until the ledger is in sync so a
+   * stale device does not charge days that others already settled. Safe to call often.
+   */
+  settleAttendance(): Promise<void>;
 
   // ── used by the sync engine ──
   applyRemote(events: LedgerEvent[]): Promise<void>;
@@ -186,6 +194,10 @@ export function createLedgerStore({
       if (cmd.type === 'ProposeWaive' && first?.type === 'WaiveProposed') {
         return { eventId: first.id, kind: 'proposal', command: { type: 'WithdrawWaive', proposalId: first.id }, expiresAt };
       }
+      // A motion that passed on the spot (nobody else had to agree) has nothing left to withdraw.
+      if (cmd.type === 'ProposeMotion' && first?.type === 'MotionProposed' && get().ledger.motions[first.id]?.status === 'open') {
+        return { eventId: first.id, kind: 'proposal', command: { type: 'WithdrawMotion', motionId: first.id }, expiresAt };
+      }
       return null;
     };
 
@@ -228,7 +240,7 @@ export function createLedgerStore({
         }
       },
 
-      createGroup: ({ ownerName, appearance, timeZone: tz }) =>
+      createGroup: ({ ownerName, appearance, timeZone: tz, mode: initialMode = 'attendance' }) =>
         serial(async () => {
           const groupId = asGroupId(newId());
           const me = asPlayerId(newId());
@@ -240,6 +252,11 @@ export function createLedgerStore({
             me,
             groupId,
           );
+          // Without a ModeChanged event a ledger reads as shared, so only attendance needs one.
+          const mode: Decision =
+            initialMode === 'attendance'
+              ? await run({ type: 'ChangeMode', mode: 'attendance' }, me, groupId)
+              : { ok: true, value: [] };
           await meta.set(META.group, groupId);
           await meta.set(META.me(groupId), me);
           // The group appears only once it is stored: a reload right after creating it must not lose it.
@@ -250,7 +267,9 @@ export function createLedgerStore({
             // Registration is retried by the sync engine if we are offline now.
             await registerGroup(groupId, me, ownerName).catch(() => set({ sync: 'offline' }));
           }
-          return rules.ok ? { ok: true, value: [...added.value, ...rules.value] } : rules;
+          if (!rules.ok) return rules;
+          if (!mode.ok) return mode;
+          return { ok: true, value: [...added.value, ...rules.value, ...mode.value] };
         }),
 
       importGroup: (groupId, me, events) =>
@@ -290,6 +309,8 @@ export function createLedgerStore({
         await remote.claimPlayer(groupId, playerId);
         await meta.set(META.me(groupId), playerId);
         set({ me: playerId });
+        // Someone else added this player; from now on it is used by its own account (attendance, motions).
+        if (!get().ledger.acted[playerId]) await serial(() => run({ type: 'ClaimSelf' }, playerId, groupId));
       },
 
       async registerSelf(name, appearance) {
@@ -335,6 +356,18 @@ export function createLedgerStore({
       wallNow: () => wallTime(clock.now(), timeZone()),
       nowIso: () => clock.now().toISOString(),
 
+      async settleAttendance() {
+        const { groupId, me, sync, ledger } = get();
+        if (!groupId || !me || (sync !== 'local' && sync !== 'synced')) return;
+        // Members who claimed their player before attendance existed have never acted in the ledger; until they
+        // do they are neither judged nor asked to vote, so mark them as soon as their device is in sync.
+        if (ledger.mode === 'attendance' && ledger.players[me] && !ledger.acted[me]) {
+          await serial(() => run({ type: 'ClaimSelf' }, me, groupId));
+        }
+        if (missedDays(ledger, clock.now().toISOString()).length === 0) return;
+        await serial(() => run({ type: 'SettleAttendance' }, me, groupId));
+      },
+
       applyRemote: (incoming) =>
         serial(async () => {
           const { groupId, events, me } = get();
@@ -378,7 +411,9 @@ export function createLedgerStore({
         }),
 
       setSync(sync) {
-        if (get().sync !== sync) set({ sync });
+        if (get().sync === sync) return;
+        set({ sync });
+        if (sync === 'synced') void get().settleAttendance();
       },
 
       drainRemoteFeed() {

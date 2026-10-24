@@ -1,5 +1,5 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { useT } from './context';
 
 /** Bottom sheet on phones, side panel on wide screens (see ui.css). Built on Radix Dialog for focus/a11y. */
@@ -17,23 +17,28 @@ export function Sheet({
   children: ReactNode;
 }) {
   const t = useT();
+  // While the closing animation runs, keep showing what was there: callers usually render their body only
+  // while open (`{open && …}`) and derive the title from the selection that was just cleared.
+  const shown = useRef({ title, description, children });
+  if (open) shown.current = { title, description, children };
+  const view = shown.current;
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="cm-overlay" />
-        <Dialog.Content className="cm-sheet" aria-describedby={description ? undefined : undefined}>
+        <Dialog.Content className="cm-sheet" aria-describedby={view.description ? undefined : undefined}>
           <header className="cm-sheet-header">
-            <Dialog.Title className="cm-sheet-title">{title}</Dialog.Title>
+            <Dialog.Title className="cm-sheet-title">{view.title}</Dialog.Title>
             <Dialog.Close className="cm-icon-button" aria-label={t('action.close')}>
               ✕
             </Dialog.Close>
           </header>
-          {description ? (
-            <Dialog.Description className="cm-sheet-description">{description}</Dialog.Description>
+          {view.description ? (
+            <Dialog.Description className="cm-sheet-description">{view.description}</Dialog.Description>
           ) : (
-            <Dialog.Description className="cm-visually-hidden">{title}</Dialog.Description>
+            <Dialog.Description className="cm-visually-hidden">{view.title}</Dialog.Description>
           )}
-          <div className="cm-sheet-body">{children}</div>
+          <div className="cm-sheet-body">{view.children}</div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -114,4 +119,32 @@ export function Segmented<T extends string>({
 
 export function ColorDot({ color }: { color: string }) {
   return <span className="cm-dot" style={{ background: color }} aria-hidden />;
+}
+
+/** Inline "are you sure?" box, the app's pattern for consequential actions (instead of window.confirm). */
+export function ConfirmBox({
+  message,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+}: {
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="cm-warning" role="alert">
+      <p>{message}</p>
+      <div className="cm-row">
+        <button type="button" className="cm-button cm-button-danger" onClick={onConfirm}>
+          {confirmLabel}
+        </button>
+        <button type="button" className="cm-button cm-button-ghost" onClick={onCancel}>
+          {t('action.cancel')}
+        </button>
+      </div>
+    </div>
+  );
 }

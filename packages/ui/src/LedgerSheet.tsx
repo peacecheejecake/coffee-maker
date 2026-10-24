@@ -15,6 +15,7 @@ import {
 import type { MessageKey, Translate } from '@coffee/theme';
 import { useMemo, useState } from 'react';
 import { useCommand, useLedger, useT, useUi } from './context';
+import { AdjustForm } from './Motions';
 import { formatInstant, formatWorkDate } from './format';
 import { sealDataUrl, seedOf } from './stamp';
 import { Sheet } from './primitives';
@@ -60,6 +61,7 @@ function LedgerBody({ playerId, onCorrect, onOpenBallots, proposeFor }: LedgerSh
         })}
         {stats.overpaid > 0 && <span className="cm-muted"> · {t('ledger.overpaid', { count: stats.overpaid })}</span>}
       </p>
+      <AdjustToggle playerId={playerId} />
       <RedemptionList playerId={playerId} />
       {records.length === 0 ? (
         <p className="cm-muted">{t('ledger.empty')}</p>
@@ -75,6 +77,23 @@ function LedgerBody({ playerId, onCorrect, onOpenBallots, proposeFor }: LedgerSh
             />
           ))}
         </ul>
+      )}
+    </div>
+  );
+}
+
+function AdjustToggle({ playerId }: { playerId: PlayerId }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button type="button" className="cm-button cm-button-ghost" aria-expanded={open} onClick={() => setOpen((x) => !x)}>
+        {t('ledger.adjust')}
+      </button>
+      {open && (
+        <div className="cm-inset">
+          <AdjustForm playerId={playerId} onDone={() => setOpen(false)} />
+        </div>
       )}
     </div>
   );
@@ -104,7 +123,7 @@ function RecordRow({
   const now = nowIso();
   const review = openProposal(ledger, r.id, now);
   const active = r.status === 'active';
-  const canRetract = active && r.recordedBy === me && minutesBetween(r.recordedAt, now) <= RETRACT_WINDOW_MINUTES;
+  const canRetract = active && !r.origin && r.recordedBy === me && minutesBetween(r.recordedAt, now) <= RETRACT_WINDOW_MINUTES;
 
   async function propose() {
     const d = await run({ type: 'ProposeWaive', targetId: r.id, reason });
@@ -118,7 +137,11 @@ function RecordRow({
     <li className={`cm-record ${active ? '' : 'is-closed'}`}>
       <button type="button" className="cm-record-head" aria-expanded={expanded} onClick={() => setExpanded((x) => !x)}>
         <span>
-          {t('ledger.row', { date: formatWorkDate(r.workDate), arrived: r.arrivedAt, minutes: r.minutesLate })}
+          {t(r.origin ? `ledger.origin.${r.origin}` : 'ledger.row', {
+            date: formatWorkDate(r.workDate),
+            arrived: r.arrivedAt,
+            minutes: r.minutesLate,
+          })}
         </span>
         <span className="cm-record-badges">
           {r.status !== 'active' && <span className="cm-badge">{t(`ledger.status.${r.status}`)}</span>}
@@ -150,9 +173,12 @@ function RecordRow({
 
           {active && (
             <div className="cm-row cm-wrap">
-              <button type="button" className="cm-button" onClick={() => onCorrect(r.id)}>
-                {t('ledger.correct')}
-              </button>
+              {/* Attendance records are judged by server time; cups there change through adjust motions. */}
+              {ledger.mode === 'shared' && (
+                <button type="button" className="cm-button" onClick={() => onCorrect(r.id)}>
+                  {t('ledger.correct')}
+                </button>
+              )}
               {canRetract && (
                 <button type="button" className="cm-button" onClick={() => void run({ type: 'RetractLate', targetId: r.id })}>
                   {t('ledger.retract')}
@@ -245,7 +271,7 @@ function RedemptionRow({ redemption: r }: { redemption: Redemption }) {
   const acked = r.recipients.filter((id) => r.acknowledgedBy.includes(id)).length;
   const fully = acked === r.recipients.length;
   const seal = useMemo(() => sealDataUrl(r.stampQuality, seedOf(r.id), 96), [r.stampQuality, r.id]);
-  const canRevert = !r.reverted && r.recordedBy === me && minutesBetween(r.at, nowIso()) <= RETRACT_WINDOW_MINUTES;
+  const canRevert = !r.reverted && !r.viaMotion && r.recordedBy === me && minutesBetween(r.at, nowIso()) <= RETRACT_WINDOW_MINUTES;
 
   return (
     <li className={`cm-record cm-redemption ${r.reverted ? 'is-closed' : ''}`}>

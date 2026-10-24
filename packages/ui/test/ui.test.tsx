@@ -4,6 +4,7 @@ import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { CheckInButton } from '../src/Attendance';
 import { LedgerProvider } from '../src/context';
 import { RecordSheet } from '../src/RecordSheet';
 import { TierEditor } from '../src/SettingsSheet';
@@ -20,7 +21,7 @@ async function makeStore(): Promise<LedgerStore> {
     clock: { now: () => new Date('2026-10-23T00:40:00Z') },
     newId: () => `id${++seq}`,
   });
-  await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, timeZone: 'Asia/Seoul' });
+  await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, mode: 'shared', timeZone: 'Asia/Seoul' });
   await store.getState().dispatch({ type: 'AddPlayer', id: asPlayerId('B'), name: '민수', appearance: { color: '#0f0' } });
   return store;
 }
@@ -133,5 +134,63 @@ describe('TierEditor', () => {
       { upToMinutes: 15, cups: 1 },
       { upToMinutes: null, cups: 2 },
     ]);
+  });
+});
+
+describe('attendance mode', () => {
+  /** Attendance group adopted on Fri 10-23; the clock is moved by the test. */
+  async function attendanceStore(now: { at: string }) {
+    let seq = 0;
+    const store = createLedgerStore({
+      ...createMemoryStores(),
+      clock: { now: () => new Date(now.at) },
+      newId: () => `id${++seq}`,
+    });
+    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, timeZone: 'Asia/Seoul' });
+    await store.getState().dispatch({ type: 'AddPlayer', id: asPlayerId('B'), name: '민수', appearance: { color: '#0f0' } });
+    return store;
+  }
+
+  it('the check-in button explains why it is unavailable, then checks in late by the rules', async () => {
+    const now = { at: '2026-10-23T00:40:00Z' };
+    const store = await attendanceStore(now);
+    const user = userEvent.setup();
+    render(
+      <LedgerProvider store={store}>
+        <CheckInButton />
+      </LedgerProvider>,
+    );
+    expect(screen.getByRole('button', { name: /규정 확정 대기/ }).hasAttribute('disabled')).toBe(true);
+    await act(() => store.getState().dispatch({ type: 'AdoptRules', ruleset: store.getState().ledger.rulesets.at(-1)!.ruleset }));
+    expect(screen.getByRole('button', { name: /부터 판정/ }).hasAttribute('disabled')).toBe(true);
+
+    now.at = '2026-10-26T00:10:00Z'; // Mon 09:10 Seoul
+    // The button reads the clock when it renders.
+    cleanup();
+    render(
+      <LedgerProvider store={store}>
+        <CheckInButton />
+      </LedgerProvider>,
+    );
+    await user.click(screen.getByRole('button', { name: /출두 체크/ }));
+    const [late] = Object.values(store.getState().ledger.lates);
+    expect(late).toMatchObject({ origin: 'checkIn', arrivedAt: '09:10', cups: 1 });
+    expect(screen.getByRole('button', { name: /출두 완료/ }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('proposes a cup adjustment from the ledger sheet', async () => {
+    const store = await attendanceStore({ at: '2026-10-23T00:40:00Z' });
+    const user = userEvent.setup();
+    render(
+      <LedgerProvider store={store}>
+        <LedgerSheet playerId={asPlayerId('B')} proposeFor={null} onOpenChange={() => {}} onCorrect={() => {}} onOpenBallots={() => {}} />
+      </LedgerProvider>,
+    );
+    await user.click(screen.getByRole('button', { name: '업보 수정 발의' }));
+    await user.type(screen.getByLabelText('사유'), '회식 지각');
+    await user.click(screen.getByRole('button', { name: '수정 발의' }));
+    // Two players: 지원 is the only voter and proposed it, so it passes at once.
+    expect(Object.values(store.getState().ledger.motions)[0]?.status).toBe('approved');
+    expect(store.getState().ledger.towers[asPlayerId('B')]?.cups).toHaveLength(1);
   });
 });

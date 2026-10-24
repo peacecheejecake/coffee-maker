@@ -1,4 +1,4 @@
-import type { LateChanges, RedeemOrder, StampQuality, Vote } from './events';
+import type { GroupMode, LateChanges, Motion, RedeemOrder, StampQuality, Vote } from './events';
 import type { EventId, PlayerId } from './ids';
 import type { Player } from './player';
 import type { Ruleset, WaivePolicy } from './ruleset';
@@ -33,15 +33,25 @@ export interface CorrectionEntry {
   before: { scheduledStart: HHmm; arrivedAt: HHmm; minutesLate: number; cups: number; note?: string };
 }
 
-export type LateStatus = 'active' | 'retracted' | 'waived';
+/** `excused`: an attendance record closed because the day became a holiday or vacation afterwards. */
+export type LateStatus = 'active' | 'retracted' | 'waived' | 'excused';
+
+/**
+ * Where a record came from. Absent: recorded by someone in the shared ledger. `checkIn`: the player's own late
+ * check-in. `missed`: no check-in on a work day. `adjustment`: cups added by an approved motion (no times).
+ */
+export type LateOrigin = 'checkIn' | 'missed' | 'adjustment';
 
 export interface LateRecord {
   id: EventId;
   playerId: PlayerId;
   workDate: WorkDate;
+  /** Empty for adjustments. */
   scheduledStart: HHmm;
+  /** Empty for adjustments and missed days. */
   arrivedAt: HHmm;
   minutesLate: number;
+  origin?: LateOrigin;
   /** Cups currently claimed by this record (after corrections). */
   cups: number;
   cupsOverridden: boolean;
@@ -89,6 +99,37 @@ export interface Redemption {
   evidence?: { assetId: string };
   acknowledgedBy: PlayerId[];
   reverted: boolean;
+  /** Paid through an approved redeem motion: the decision belongs to the voters and is not undoable. */
+  viaMotion?: true;
+}
+
+export type MotionStatus = ProposalStatus;
+
+export interface MotionRecord {
+  id: EventId;
+  motion: Motion;
+  proposerId: PlayerId;
+  voters: PlayerId[];
+  proposedAt: Instant;
+  expiresAt: Instant;
+  votes: Partial<Record<PlayerId, Vote>>;
+  status: MotionStatus;
+  closedAt?: Instant;
+}
+
+export interface Holiday {
+  name: string;
+  /** false cancels a built-in public holiday for this group. */
+  off: boolean;
+}
+
+export interface AttendanceState {
+  /** Set by RulesAdopted; cleared when the mode changes. */
+  adoptedOn?: WorkDate;
+  /** First work date that is judged: the day after adoption. */
+  startsOn?: WorkDate;
+  /** `${playerId}|${workDate}` → how the day was settled. */
+  days: Partial<Record<string, 'checkIn' | 'missed'>>;
 }
 
 export interface RulesetEntry {
@@ -118,7 +159,23 @@ export interface LedgerState {
   /** Redeemed cups that found nothing to remove (concurrent redemptions). */
   unappliedRedeemed: Partial<Record<PlayerId, number>>;
   onTimes: OnTimeRecord[];
+  mode: GroupMode;
+  attendance: AttendanceState;
+  /** Date each player joined (group timezone), from the join event's time; reset when un-archived. */
+  joinedOn: Partial<Record<PlayerId, WorkDate>>;
+  /**
+   * Players who have acted themselves at least once (joined by invite, claimed, or any own event). Players
+   * someone else added and nobody uses cannot check in, so attendance and motions leave them out.
+   */
+  acted: Partial<Record<PlayerId, Instant>>;
+  holidays: Partial<Record<WorkDate, Holiday>>;
+  /** Sorted vacation dates per player. */
+  vacations: Partial<Record<PlayerId, WorkDate[]>>;
+  motions: Partial<Record<EventId, MotionRecord>>;
+  motionOrder: EventId[];
 }
+
+export const attendanceKey = (playerId: PlayerId, date: WorkDate) => `${playerId}|${date}`;
 
 export const emptyState = (): LedgerState => ({
   players: {},
@@ -133,4 +190,12 @@ export const emptyState = (): LedgerState => ({
   proposalOrder: [],
   unappliedRedeemed: {},
   onTimes: [],
+  mode: 'shared',
+  attendance: { days: {} },
+  joinedOn: {},
+  acted: {},
+  holidays: {},
+  vacations: {},
+  motions: {},
+  motionOrder: [],
 });

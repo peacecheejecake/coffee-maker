@@ -26,6 +26,10 @@ function ev(groupId: string, actorId: string, payload: Record<string, unknown>, 
   return { id: uid(), groupId, actorId, at: at.toISOString(), schemaVersion: 1, ...payload } as unknown as LedgerEvent;
 }
 
+/** Date in Seoul (the default group timezone), `days` from today. */
+const seoulDate = (days = 0) =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date(Date.now() + days * 86_400_000));
+
 const joined = (groupId: string, id: string, role = 'member') =>
   ev(groupId, id, { type: 'PlayerJoined', player: { id, name: id, role, appearance: { color: '#000' }, archived: false } });
 
@@ -59,7 +63,7 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
 
   it('append_events: seq + server time, idempotent, owner-only rules, no impersonation', async () => {
     const { a, b, groupId, pa, pb } = await setup();
-    const rules = ev(groupId, pa, { type: 'RulesetChanged', ruleset: {}, effectiveFrom: '2026-10-23' });
+    const rules = ev(groupId, pa, { type: 'RulesetChanged', ruleset: { timezone: 'Asia/Seoul' }, effectiveFrom: '2026-10-23' });
     const [ok] = await a.push([rules]);
     expect(ok).toMatchObject({ id: rules.id, seq: expect.any(Number), serverAt: expect.any(String) });
     expect(await a.push([rules])).toEqual([ok]); // idempotent
@@ -197,4 +201,88 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     expect(arrived()).toMatchObject({ id: late.id, seq: expect.any(Number), serverAt: expect.any(String) });
     expect(received.every((e) => e.groupId === groupId)).toBe(true);
   }, 35_000);
+
+  it('modes: owner-only switches; the owner role moves to a claimed player only', async () => {
+    const { a, b, groupId, pa, pb } = await setup();
+    const [byMember] = await b.push([ev(groupId, pb, { type: 'ModeChanged', mode: 'attendance' })]);
+    expect(byMember?.error).toMatch(/owner_only/);
+    const [unknown] = await a.push([ev(groupId, pa, { type: 'OwnerTransferred', to: 'nobody' })]);
+    expect(unknown?.error).toMatch(/no_such_player/);
+    // In the ledger but no account behind it.
+    const pc = uid();
+    await a.push([ev(groupId, pa, { type: 'PlayerJoined', player: { id: pc, name: pc, role: 'member', appearance: { color: '#000' }, archived: false } })]);
+    const [unclaimed] = await a.push([ev(groupId, pa, { type: 'OwnerTransferred', to: pc })]);
+    expect(unclaimed?.error).toMatch(/not_claimed/);
+
+    const [handed] = await a.push([ev(groupId, pa, { type: 'OwnerTransferred', to: pb })]);
+    expect(handed?.error).toBeUndefined();
+    // Roles moved on the server too: the old owner is refused, the new one accepted.
+    const [old] = await a.push([ev(groupId, pa, { type: 'ModeChanged', mode: 'attendance' })]);
+    expect(old?.error).toMatch(/owner_only/);
+    const [now] = await b.push([ev(groupId, pb, { type: 'ModeChanged', mode: 'attendance' })]);
+    expect(now?.error).toBeUndefined();
+  });
+
+  it('attendance: check-ins for the server today only, once; missed days once over, canonical and idempotent', async () => {
+    const { a, b, groupId, pa, pb } = await setup();
+    const [tomorrow] = await b.push([ev(groupId, pb, { type: 'CheckedIn', workDate: seoulDate(1) })]);
+    expect(tomorrow?.error).toMatch(/wrong_day/);
+    const [first] = await b.push([ev(groupId, pb, { type: 'CheckedIn', workDate: seoulDate() })]);
+    expect(first?.error).toBeUndefined();
+    const [again] = await b.push([ev(groupId, pb, { type: 'CheckedIn', workDate: seoulDate() })]);
+    expect(again?.error).toMatch(/already_checked_in/);
+
+    const today = { type: 'AttendanceMissed', playerId: pb, workDate: seoulDate() };
+    const [early] = await a.push([{ ...ev(groupId, pa, today), id: `miss:${groupId}:${pb}:${seoulDate()}` } as LedgerEvent]);
+    expect(early?.error).toMatch(/day_not_over/);
+
+    const body = { type: 'AttendanceMissed', playerId: pb, workDate: seoulDate(-1) };
+    const [bad] = await a.push([ev(groupId, pa, body)]);
+    expect(bad?.error).toMatch(/bad_missed_id/);
+    const id = `miss:${groupId}:${pb}:${seoulDate(-1)}`;
+    // Two devices settling the same day at the same moment: both get the one stored row.
+    const [[fromA], [fromB]] = await Promise.all([
+      a.push([{ ...ev(groupId, pa, body), id } as LedgerEvent]),
+      b.push([{ ...ev(groupId, pb, body), id } as LedgerEvent]),
+    ]);
+    expect(fromA).toMatchObject({ id, seq: expect.any(Number) });
+    expect(fromB).toEqual(fromA);
+  });
+
+  it('modes: the server follows mode and adoption; adopted rules change only by motion', async () => {
+    const { a, groupId, pa } = await setup();
+    const ruleset = { timezone: 'Asia/Seoul' };
+    const [notYet] = await a.push([ev(groupId, pa, { type: 'RulesAdopted', ruleset })]);
+    expect(notYet?.error).toMatch(/wrong_mode/);
+    await a.push([ev(groupId, pa, { type: 'ModeChanged', mode: 'attendance' })]);
+    const [same] = await a.push([ev(groupId, pa, { type: 'ModeChanged', mode: 'attendance' })]);
+    expect(same?.error).toMatch(/no_change/);
+    const [badTz] = await a.push([ev(groupId, pa, { type: 'RulesAdopted', ruleset: { timezone: 'Not/AZone' } })]);
+    expect(badTz?.error).toMatch(/invalid_timezone/);
+    const [adopted] = await a.push([ev(groupId, pa, { type: 'RulesAdopted', ruleset })]);
+    expect(adopted?.error).toBeUndefined();
+    const [twice] = await a.push([ev(groupId, pa, { type: 'RulesAdopted', ruleset })]);
+    expect(twice?.error).toMatch(/already_adopted/);
+    const [direct] = await a.push([ev(groupId, pa, { type: 'RulesetChanged', ruleset, effectiveFrom: seoulDate() })]);
+    expect(direct?.error).toMatch(/wrong_mode/);
+  });
+
+  it('motions: voters only, once, before the deadline; only the proposer withdraws', async () => {
+    const { a, b, groupId, pa, pb } = await setup();
+    const motion = { kind: 'adjust', playerId: pa, delta: 1, reason: 'x' };
+    const open = ev(groupId, pa, { type: 'MotionProposed', motion, voters: [pb], expiresAt: new Date(Date.now() + 3_600_000).toISOString() });
+    const closed = ev(groupId, pa, { type: 'MotionProposed', motion, voters: [pb], expiresAt: new Date(Date.now() - 1_000).toISOString() });
+    await a.push([open, closed]);
+
+    const [notVoter] = await a.push([ev(groupId, pa, { type: 'MotionVoted', motionId: open.id, vote: 'approve' })]);
+    expect(notVoter?.error).toMatch(/not_a_voter/);
+    const [late] = await b.push([ev(groupId, pb, { type: 'MotionVoted', motionId: closed.id, vote: 'approve' })]);
+    expect(late?.error).toMatch(/proposal_expired/);
+    const [vote] = await b.push([ev(groupId, pb, { type: 'MotionVoted', motionId: open.id, vote: 'approve' })]);
+    expect(vote?.error).toBeUndefined();
+    const [twice] = await b.push([ev(groupId, pb, { type: 'MotionVoted', motionId: open.id, vote: 'reject' })]);
+    expect(twice?.error).toMatch(/already_voted/);
+    const [steal] = await b.push([ev(groupId, pb, { type: 'MotionWithdrawn', motionId: open.id })]);
+    expect(steal?.error).toMatch(/not_proposer/);
+  });
 });

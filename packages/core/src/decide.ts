@@ -1,7 +1,11 @@
 import { domainError, type DomainError } from './errors';
+import { isWorkdayFor } from './calendar';
 import {
   CURRENT_SCHEMA_VERSION,
+  missedEventId,
   type EventPayload,
+  type GroupMode,
+  type Motion,
   type LateChanges,
   type LedgerEvent,
   type RedeemOrder,
@@ -11,12 +15,17 @@ import {
 import { asEventId, asPlayerId, type EventId, type GroupId, type PlayerId } from './ids';
 import { computeCups, judgeLateness } from './judge';
 import type { Player, PlayerAppearance, PlayerPatch, PlayerRole } from './player';
-import { RETRACT_WINDOW_MINUTES } from './policy';
+import { MAX_CUPS_PER_RECORD, RETRACT_WINDOW_MINUTES } from './policy';
+import { motionIssue, motionVoters } from './motionRules';
 import { err, ok, type Result } from './result';
 import { validateRuleset, type Ruleset } from './ruleset';
 import {
   activePlayers,
+  attendanceInForce,
+  attendanceOn,
   currentRuleset,
+  missedDays,
+  motionsOpen,
   openProposal,
   outstanding,
   previewArrival,
@@ -24,9 +33,8 @@ import {
 } from './selectors';
 import type { LedgerState } from './state';
 import { addHours, isHHmm, isWorkDate, minutesBetween, type HHmm, type Instant, type WorkDate } from './time';
+import { motionStatus } from './motion';
 import { proposalStatus } from './waive';
-
-export const MAX_CUPS_PER_RECORD = 10;
 
 export type Command =
   | {
@@ -70,7 +78,20 @@ export type Command =
       evidence?: { assetId: string };
     }
   | { type: 'AcknowledgeRedemption'; redemptionId: EventId }
-  | { type: 'RevertRedemption'; redemptionId: EventId };
+  | { type: 'RevertRedemption'; redemptionId: EventId }
+  /** After claiming a player someone else added: mark it as used by its own account. */
+  | { type: 'ClaimSelf' }
+  | { type: 'ChangeMode'; mode: GroupMode }
+  | { type: 'TransferOwner'; to: PlayerId }
+  | { type: 'AdoptRules'; ruleset: Ruleset }
+  | { type: 'CheckIn' }
+  /** Records every work day that ended without a check-in (any member may do this). */
+  | { type: 'SettleAttendance' }
+  | { type: 'SetHoliday'; date: WorkDate; name: string; off: boolean }
+  | { type: 'SetVacation'; date: WorkDate; on: boolean }
+  | { type: 'ProposeMotion'; motion: Motion }
+  | { type: 'VoteMotion'; motionId: EventId; vote: Vote }
+  | { type: 'WithdrawMotion'; motionId: EventId };
 
 export interface DecideContext {
   groupId: GroupId;
@@ -103,10 +124,13 @@ export function decide(state: LedgerState, cmd: Command, ctx: DecideContext): De
     case 'UpdatePlayer':
       return updatePlayer(state, cmd, actor, make);
     case 'ChangeRuleset':
+      if (attendanceInForce(state)) return fail('WrongMode', 'Adopted rules change through a motion');
       return changeRuleset(cmd, actor, ctx, make);
     case 'RecordArrival':
+      if (state.mode === 'attendance') return fail('WrongMode', 'Everyone checks in themselves in attendance mode');
       return recordArrival(state, cmd, ctx, make);
     case 'CorrectLate':
+      if (state.mode === 'attendance') return fail('WrongMode', 'Cups change through an adjust motion in attendance mode');
       return correctLate(state, cmd, make);
     case 'RetractLate':
       return retractLate(state, cmd, ctx, make);
@@ -117,11 +141,37 @@ export function decide(state: LedgerState, cmd: Command, ctx: DecideContext): De
     case 'WithdrawWaive':
       return withdrawWaive(state, cmd, ctx, make);
     case 'Redeem':
+      if (state.mode === 'attendance') return fail('WrongMode', 'Cups are paid back through redeem motions');
       return redeem(state, cmd, ctx, make);
     case 'AcknowledgeRedemption':
       return acknowledge(state, cmd, ctx, make);
     case 'RevertRedemption':
       return revertRedemption(state, cmd, ctx, make);
+    case 'ClaimSelf':
+      if (state.acted[actor.id]) return fail('NoChange', 'Already active');
+      return emit(make({ type: 'PlayerClaimed' }));
+    case 'ChangeMode':
+      if (actor.role !== 'owner') return fail('NotPermitted', 'Only the owner can change the mode');
+      if (state.mode === cmd.mode) return fail('NoChange', `Already in ${cmd.mode} mode`);
+      return emit(make({ type: 'ModeChanged', mode: cmd.mode }));
+    case 'TransferOwner':
+      return transferOwner(state, cmd, actor, make);
+    case 'AdoptRules':
+      return adoptRules(state, cmd, actor, make);
+    case 'CheckIn':
+      return checkIn(state, ctx, make);
+    case 'SettleAttendance':
+      return settle(state, ctx, make);
+    case 'SetHoliday':
+      return setHoliday(state, cmd, make);
+    case 'SetVacation':
+      return setVacation(state, cmd, ctx, make);
+    case 'ProposeMotion':
+      return proposeMotion(state, cmd, ctx, make);
+    case 'VoteMotion':
+      return voteMotion(state, cmd, ctx, make);
+    case 'WithdrawMotion':
+      return withdrawMotion(state, cmd, ctx, make);
   }
 }
 
@@ -301,6 +351,7 @@ function retractLate(s: LedgerState, cmd: Cmd<'RetractLate'>, ctx: DecideContext
   const rec = s.lates[cmd.targetId];
   if (!rec) return fail('TargetNotFound', 'No such late record');
   if (rec.status !== 'active') return fail('AlreadyClosed', `Record is ${rec.status}`);
+  if (rec.origin) return fail('NotPermitted', 'Attendance records and adjustments cannot be retracted');
   if (rec.recordedBy !== ctx.actorId) return fail('NotPermitted', 'Only the recorder can retract');
   if (minutesBetween(rec.recordedAt, ctx.now) > RETRACT_WINDOW_MINUTES) {
     return fail('RetractWindowClosed', `Retraction is only possible within ${RETRACT_WINDOW_MINUTES} minutes`);
@@ -399,9 +450,139 @@ function revertRedemption(s: LedgerState, cmd: Cmd<'RevertRedemption'>, ctx: Dec
   const r = s.redemptions[cmd.redemptionId];
   if (!r) return fail('TargetNotFound', 'No such redemption');
   if (r.reverted) return fail('AlreadyClosed', 'Redemption was reverted');
+  if (r.viaMotion) return fail('NotPermitted', 'A redemption the group agreed to cannot be reverted');
   if (r.recordedBy !== ctx.actorId) return fail('NotPermitted', 'Only the recorder can revert');
   if (minutesBetween(r.at, ctx.now) > RETRACT_WINDOW_MINUTES) {
     return fail('RetractWindowClosed', `Reverting is only possible within ${RETRACT_WINDOW_MINUTES} minutes`);
   }
   return emit(make({ type: 'RedemptionReverted', redemptionId: r.id }));
+}
+
+// ── modes & attendance ──────────────────────────────────────────────────────
+
+function transferOwner(s: LedgerState, cmd: Cmd<'TransferOwner'>, actor: Player, make: Make): Decision {
+  if (actor.role !== 'owner') return fail('NotPermitted', 'Only the owner can hand over the role');
+  const to = s.players[cmd.to];
+  if (!to || to.archived) return fail('PlayerNotFound', 'No such active player');
+  if (to.id === actor.id) return fail('NoChange', 'Already the owner');
+  return emit(make({ type: 'OwnerTransferred', to: to.id }));
+}
+
+function adoptRules(s: LedgerState, cmd: Cmd<'AdoptRules'>, actor: Player, make: Make): Decision {
+  if (s.mode !== 'attendance') return fail('WrongMode', 'Rules are adopted in attendance mode');
+  if (actor.role !== 'owner') return fail('NotPermitted', 'Only the owner can confirm the first rules');
+  if (s.attendance.adoptedOn) return fail('AlreadyAdopted', 'Rules are already adopted; propose a change instead');
+  const issues = validateRuleset(cmd.ruleset);
+  if (issues.length > 0) return fail('InvalidRuleset', 'Ruleset is invalid', { issues });
+  return emit(make({ type: 'RulesAdopted', ruleset: cmd.ruleset }));
+}
+
+function checkIn(s: LedgerState, ctx: DecideContext, make: Make): Decision {
+  if (s.mode !== 'attendance') return fail('WrongMode', 'Check-ins are for attendance mode');
+  const { startsOn } = s.attendance;
+  if (!startsOn) return fail('RulesNotAdopted', 'The rules have not been confirmed yet');
+  if (ctx.today < startsOn) return fail('RulesNotAdopted', `Attendance starts on ${startsOn}`, { startsOn });
+  if (attendanceOn(s, ctx.actorId, ctx.today)) return fail('AlreadyCheckedIn', 'Already settled for today');
+  if (!isWorkdayFor(s, rulesetAt(s, ctx.today), ctx.actorId, ctx.today)) {
+    return fail('NotAWorkday', 'No check-in needed today');
+  }
+  return emit(make({ type: 'CheckedIn', workDate: ctx.today }));
+}
+
+function settle(s: LedgerState, ctx: DecideContext, make: Make): Decision {
+  return emit(
+    ...missedDays(s, ctx.now).map(({ playerId, workDate }) => ({
+      ...make({ type: 'AttendanceMissed', playerId, workDate }),
+      id: missedEventId(ctx.groupId, playerId, workDate),
+    })),
+  );
+}
+
+function setHoliday(s: LedgerState, cmd: Cmd<'SetHoliday'>, make: Make): Decision {
+  if (s.mode === 'attendance') return fail('WrongMode', 'Holidays are common rules; propose a motion');
+  const v = validHoliday(cmd.date, cmd.name, cmd.off);
+  if (v) return v;
+  return emit(make({ type: 'HolidaySet', date: cmd.date, name: cmd.name.trim(), off: cmd.off }));
+}
+
+function validHoliday(date: WorkDate, name: string, off: boolean): Decision | undefined {
+  if (!isWorkDate(date)) return fail('InvalidInput', 'date must be YYYY-MM-DD');
+  if (off && name.trim() === '') return fail('InvalidInput', 'A holiday needs a name');
+  return undefined;
+}
+
+function setVacation(s: LedgerState, cmd: Cmd<'SetVacation'>, ctx: DecideContext, make: Make): Decision {
+  if (!isWorkDate(cmd.date)) return fail('InvalidInput', 'date must be YYYY-MM-DD');
+  const has = s.vacations[ctx.actorId]?.includes(cmd.date) ?? false;
+  if (has === cmd.on) return fail('NoChange', cmd.on ? 'Already on vacation' : 'Not on vacation');
+  return emit(make({ type: 'VacationSet', date: cmd.date, on: cmd.on }));
+}
+
+// ── motions ─────────────────────────────────────────────────────────────────
+
+function proposeMotion(s: LedgerState, cmd: Cmd<'ProposeMotion'>, ctx: DecideContext, make: Make): Decision {
+  let motion: Motion = cmd.motion;
+  if (motion.kind !== 'adjust' && s.mode !== 'attendance') {
+    return fail('WrongMode', 'Only cup adjustments are voted on in the shared ledger');
+  }
+  // Normalize before validating so the stored motion is exactly what was checked.
+  if (motion.kind === 'holiday') motion = { ...motion, name: motion.name.trim() };
+  if (motion.kind === 'adjust') motion = { ...motion, reason: motion.reason.trim() };
+  if (motion.kind === 'redeem') motion = { ...motion, recipients: [...new Set(motion.recipients)] };
+
+  switch (motion.kind) {
+    case 'ruleset': {
+      if (!attendanceInForce(s)) return fail('RulesNotAdopted', 'Confirm the first rules before proposing changes');
+      const issues = validateRuleset(motion.ruleset);
+      if (issues.length > 0) return fail('InvalidRuleset', 'Ruleset is invalid', { issues });
+      break;
+    }
+    case 'adjust': {
+      if (motion.reason === '') return fail('ReasonRequired', 'A reason is required');
+      const owed = outstanding(s, motion.playerId);
+      if (motion.delta < 0 && -motion.delta > owed) {
+        return fail('RedeemExceedsDebt', `Only ${owed} cups outstanding`, { outstanding: owed });
+      }
+      break;
+    }
+    case 'redeem': {
+      // Cups already on the table in other open redeem motions are not available twice.
+      const debtorId = motion.debtorId;
+      const pending = motionsOpen(s, ctx.now).filter((m) => m.motion.kind === 'redeem' && m.motion.debtorId === debtorId).length;
+      if (outstanding(s, debtorId) - pending < 1) return fail('NothingToRedeem', 'No outstanding cups');
+      break;
+    }
+    case 'holiday':
+      break;
+  }
+  const issue = motionIssue(s, motion);
+  if (issue) return fail('InvalidInput', issue);
+
+  const voters = motionVoters(s, ctx.actorId, motion);
+  if (motion.kind === 'adjust' && voters.length === 0) return fail('NoEligibleVoters', 'Nobody besides the player can vote');
+
+  const ttl = currentRuleset(s).waivePolicy.ttlHours;
+  const proposed = make({ type: 'MotionProposed', motion, voters, expiresAt: addHours(ctx.now, ttl) });
+  if (!voters.includes(ctx.actorId)) return emit(proposed);
+  // The proposer obviously supports their own motion. A lone voter's motion then passes right away.
+  return emit(proposed, make({ type: 'MotionVoted', motionId: proposed.id, vote: 'approve' }));
+}
+
+function voteMotion(s: LedgerState, cmd: Cmd<'VoteMotion'>, ctx: DecideContext, make: Make): Decision {
+  const m = s.motions[cmd.motionId];
+  if (!m) return fail('TargetNotFound', 'No such motion');
+  const status = motionStatus(m, ctx.now);
+  if (status !== 'open') return fail('ProposalClosed', `Motion is ${status}`);
+  if (!m.voters.includes(ctx.actorId)) return fail('NotAVoter', 'You have no vote on this motion');
+  if (m.votes[ctx.actorId] !== undefined) return fail('AlreadyVoted', 'Votes cannot be changed');
+  return emit(make({ type: 'MotionVoted', motionId: m.id, vote: cmd.vote }));
+}
+
+function withdrawMotion(s: LedgerState, cmd: Cmd<'WithdrawMotion'>, ctx: DecideContext, make: Make): Decision {
+  const m = s.motions[cmd.motionId];
+  if (!m) return fail('TargetNotFound', 'No such motion');
+  const status = motionStatus(m, ctx.now);
+  if (status !== 'open') return fail('ProposalClosed', `Motion is ${status}`);
+  if (m.proposerId !== ctx.actorId) return fail('NotPermitted', 'Only the proposer can withdraw');
+  return emit(make({ type: 'MotionWithdrawn', motionId: m.id }));
 }

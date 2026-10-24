@@ -220,6 +220,25 @@
   margin: 0 4px;
 }
 
+.cm-input[type='file'] {
+  display: flex;
+  align-items: center;
+  padding: 0 6px;
+  font-size: 14px;
+}
+
+.cm-input[type='file']::file-selector-button {
+  font: inherit;
+  min-height: 32px;
+  margin-right: 10px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--cm-border);
+  background: var(--cm-surface-2);
+  color: var(--cm-text);
+  cursor: pointer;
+}
+
 input[type='color'] {
   width: 44px;
   height: 44px;
@@ -277,6 +296,9 @@ input[type='color'] {
 
 .cm-segmented {
   display: inline-flex;
+  /* Fit the options, also inside column layouts (.cm-field, .cm-section) that stretch their children. */
+  align-self: flex-start;
+  max-width: 100%;
   padding: 3px;
   border-radius: 12px;
   background: var(--cm-surface);
@@ -346,6 +368,25 @@ input[type='color'] {
   gap: 8px;
 }
 
+/* Fields side by side that share the width; the trailing button sits on the inputs' baseline. */
+.cm-row-fill {
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.cm-row-fill > .cm-field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.cm-date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+}
+
 .cm-wrap {
   flex-wrap: wrap;
 }
@@ -383,8 +424,14 @@ input[type='color'] {
   font-size: 15px;
 }
 
+.cm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .cm-section h3 {
-  margin: 0 0 10px;
+  margin: 0;
   font-size: 15px;
 }
 
@@ -480,9 +527,46 @@ input[type='color'] {
   }
 }
 
+/* Closing: Radix keeps the dialog mounted until this animation ends (it needs a different animation name). */
+.cm-overlay[data-state='closed'] {
+  animation: cm-fade-out 160ms ease-in forwards;
+}
+
+.cm-sheet[data-state='closed'] {
+  animation: cm-sink 180ms cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@media (min-width: 760px) {
+  .cm-sheet[data-state='closed'] {
+    animation-name: cm-slide-out;
+  }
+}
+
+@keyframes cm-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes cm-sink {
+  to {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+}
+
+@keyframes cm-slide-out {
+  to {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cm-sheet,
-  .cm-overlay {
+  .cm-overlay,
+  .cm-sheet[data-state='closed'],
+  .cm-overlay[data-state='closed'] {
     animation: none;
   }
 }
@@ -677,6 +761,29 @@ input[type='color'] {
 
 .cm-player-row .cm-input {
   flex: 1;
+}
+
+/* Keeps the name field the same width in rows without a remove button. */
+.cm-player-row .cm-icon-spacer {
+  visibility: hidden;
+}
+
+.cm-player-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cm-icon-button.is-remove {
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+
+.cm-icon-button.is-remove:hover,
+.cm-icon-button.is-remove:focus-visible {
+  color: var(--cm-danger);
+  background: rgb(235 87 87 / 0.12);
 }
 
 .cm-player-row input[type='time'] {
@@ -927,6 +1034,43 @@ input[type='color'] {
   pointer-events: none;
   white-space: normal;
   animation: cm-rise 180ms ease-out;
+}
+
+/* ── Scene zoom buttons (rendered by the 3D scene package) ── */
+
+.cm-zoom {
+  position: absolute;
+  right: max(var(--cm-gutter), env(safe-area-inset-right));
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  border-radius: 999px;
+  background: var(--cm-panel);
+  border: 1px solid var(--cm-border);
+  backdrop-filter: blur(8px);
+  overflow: hidden;
+}
+
+.cm-zoom button {
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--cm-text);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.cm-zoom button + button {
+  border-top: 1px solid var(--cm-border);
+}
+
+.cm-zoom button:active {
+  background: var(--cm-surface-2);
 }
 
 /* ── TV dashboard ────────────────────────────────────────── */

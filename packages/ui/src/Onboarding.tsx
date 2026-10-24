@@ -1,11 +1,14 @@
+import type { GroupMode } from '@coffee/core';
 import { useState } from 'react';
 import { useLedger, useT } from './context';
+import { Segmented } from './primitives';
 import { PALETTE_CHOICES } from './SettingsSheet';
 
 export function Onboarding({ onDemo }: { onDemo?: () => void }) {
   const t = useT();
   const createGroup = useLedger((s) => s.createGroup);
   const [name, setName] = useState('');
+  const [mode, setMode] = useState<GroupMode>('attendance');
   const [busy, setBusy] = useState(false);
 
   return (
@@ -21,7 +24,7 @@ export function Onboarding({ onDemo }: { onDemo?: () => void }) {
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
-            await createGroup({ ownerName: name, appearance: { color: PALETTE_CHOICES[0]! } });
+            await createGroup({ ownerName: name, appearance: { color: PALETTE_CHOICES[0]! }, mode });
             setBusy(false);
           }}
         >
@@ -37,6 +40,19 @@ export function Onboarding({ onDemo }: { onDemo?: () => void }) {
               onChange={(e) => setName(e.target.value)}
             />
           </label>
+          <div className="cm-field">
+            <span className="cm-field-label">{t('mode.title')}</span>
+            <Segmented<GroupMode>
+              label={t('mode.title')}
+              value={mode}
+              options={[
+                { value: 'attendance', label: t('mode.attendance') },
+                { value: 'shared', label: t('mode.shared') },
+              ]}
+              onChange={setMode}
+            />
+            <span className="cm-field-hint">{t(mode === 'attendance' ? 'mode.attendanceHint' : 'mode.sharedHint')}</span>
+          </div>
           <button type="submit" className="cm-button cm-button-primary" disabled={!name.trim() || busy}>
             {t('onboarding.create')}
           </button>

@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CertificateDialog } from './Certificate';
 import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
 import { compressImage } from './image';
+import { useMotionFeedback } from './Motions';
 import { ColorDot, Field, Segmented, Sheet, Stepper } from './primitives';
 import { StampPad } from './StampPad';
 
@@ -38,6 +39,9 @@ function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) 
   const ledger = useLedger((s) => s.ledger);
   const me = useLedger((s) => s.me);
   const putEvidence = useLedger((s) => s.putEvidence);
+  const feedback = useMotionFeedback();
+  // Attendance mode: one cup at a time, paid once the others agree (ADR 0002).
+  const byMotion = ledger.mode === 'attendance';
   const players = activePlayers(ledger);
   const debtors = players.filter((p) => outstanding(ledger, p.id) > 0);
 
@@ -78,18 +82,18 @@ function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) 
         // A failed upload never blocks the redemption itself.
       }
     }
-    const d = await run({
-      type: 'Redeem',
-      debtorId: debtorId!,
-      count,
-      recipients,
-      order,
-      stampQuality,
-      ...(evidence && { evidence }),
-    });
+    const d = await run(
+      byMotion
+        ? {
+            type: 'ProposeMotion',
+            motion: { kind: 'redeem', debtorId: debtorId!, recipients, stampQuality, ...(evidence && { evidence }) },
+          }
+        : { type: 'Redeem', debtorId: debtorId!, count, recipients, order, stampQuality, ...(evidence && { evidence }) },
+    );
     setBusy(false);
     if (!d.ok) return;
-    toast(t('redeem.done', { debtor: nameOf(debtorId!), count }));
+    if (byMotion) feedback(d.value[0]?.id);
+    else toast(t('redeem.done', { debtor: nameOf(debtorId!), count }));
     const after = api.getState().ledger;
     onDone(outstanding(after, debtorId!) === 0 && playerStats(after, debtorId!).cupsRedeemed > 0 ? debtorId! : null);
   }
@@ -135,9 +139,15 @@ function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) 
         ))}
       </fieldset>
 
-      <Field label={t('redeem.count')}>
-        <Stepper label={t('redeem.count')} value={count} min={1} max={Math.max(1, owed)} onChange={setCount} />
-      </Field>
+      {byMotion ? (
+        <p className="cm-muted">
+          {t('redeem.byMotion', { count: players.filter((p) => p.id !== me && p.id !== debtorId).length })}
+        </p>
+      ) : (
+        <Field label={t('redeem.count')}>
+          <Stepper label={t('redeem.count')} value={count} min={1} max={Math.max(1, owed)} onChange={setCount} />
+        </Field>
+      )}
 
       <fieldset className="cm-chips">
         <legend className="cm-field-label">{t('redeem.recipients')}</legend>
@@ -157,7 +167,7 @@ function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) 
         ))}
       </fieldset>
 
-      {owed > count && (
+      {!byMotion && owed > count && (
         <Field label={t('redeem.order')}>
           <Segmented<RedeemOrder>
             label={t('redeem.order')}
@@ -172,8 +182,8 @@ function RedeemFlow({ onDone }: { onDone: (paidOff: PlayerId | null) => void }) 
       )}
 
       <p className="cm-muted">
-        {t('redeem.payer', { name: nameOf(me) })}
-        {me !== debtorId && <span className="cm-badge"> {t('redeem.proxy')}</span>}
+        {t('redeem.payer', { name: nameOf(byMotion ? debtorId : me) })}
+        {me !== debtorId && !byMotion && <span className="cm-badge"> {t('redeem.proxy')}</span>}
       </p>
 
       {api.supportsEvidence && (

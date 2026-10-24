@@ -1,7 +1,8 @@
-import { awaitingReceipt, proposalStatus, type Redemption, type WaiveProposal } from '@coffee/core';
+import { awaitingReceipt, motionsOpen, proposalStatus, type Redemption, type WaiveProposal } from '@coffee/core';
 import { useState } from 'react';
 import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
 import { formatWorkDate } from './format';
+import { MotionCard } from './Motions';
 import { Sheet } from './primitives';
 
 export function BallotsSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
@@ -13,6 +14,7 @@ export function BallotsSheet({ open, onOpenChange }: { open: boolean; onOpenChan
   const open_ = ledger.proposalOrder
     .map((id) => ledger.proposals[id])
     .filter((p): p is WaiveProposal => !!p && proposalStatus(p, now) === 'open');
+  const motions = motionsOpen(ledger, now);
   return (
     <Sheet open={open} onOpenChange={onOpenChange} title={t('waive.title')}>
       <div className="cm-stack">
@@ -26,8 +28,18 @@ export function BallotsSheet({ open, onOpenChange }: { open: boolean; onOpenChan
             </ul>
           </section>
         )}
+        {motions.length > 0 && (
+          <section className="cm-section" aria-labelledby="motions-h">
+            <h3 id="motions-h">{t('motion.title')}</h3>
+            <ul className="cm-list">
+              {motions.map((m) => (
+                <MotionCard key={m.id} motion={m} now={now} />
+              ))}
+            </ul>
+          </section>
+        )}
         {open_.length === 0 ? (
-          <p className="cm-muted">{t('waive.empty')}</p>
+          motions.length === 0 && <p className="cm-muted">{t('waive.empty')}</p>
         ) : (
           <ul className="cm-list">
             {open_.map((p) => (
