@@ -1,14 +1,14 @@
 import { useAnimations, useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { Component, useLayoutEffect, useMemo, useRef, type ReactNode, type RefObject } from 'react';
-import { LoopOnce, LoopRepeat, type AnimationAction, type Group } from 'three';
+import { LoopOnce, type AnimationAction, type Group } from 'three';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import type { FxState } from '../director/fx';
+import { startClip } from './clips';
 
 /** Clip names authored in scripts/blender/reaper.py. */
 export const REAPER_CLIPS = ['idle', 'stamp', 'gavel', 'pen', 'nod', 'reject', 'tear', 'inspect', 'yawn', 'page', 'polish', 'glance'] as const;
 
-const FADE = 0.15;
 const IDLE_ACTIONS = ['page', 'yawn', 'polish', 'glance'] as const;
 
 /**
@@ -41,17 +41,7 @@ export function ReaperModel({
   const play = (name: string, loop: boolean) => {
     const action = actions[name];
     if (!action || current.current?.name === name) return;
-    action.reset();
-    action.setLoop(loop ? LoopRepeat : LoopOnce, loop ? Infinity : 1);
-    action.clampWhenFinished = false;
-    // The very first clip starts at full weight: a fade from the bind pose would show it (magnifier and
-    // all) for as long as frames are not being rendered.
-    if (current.current) {
-      action.fadeIn(FADE).play();
-      current.current.action.fadeOut(FADE);
-    } else {
-      action.setEffectiveWeight(1).play();
-    }
+    startClip(action, current.current?.action ?? null, loop);
     current.current = { name, action };
   };
 

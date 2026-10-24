@@ -2,6 +2,7 @@ import { Html, RoundedBox } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { BoxGeometry, LatheGeometry, Vector2, type Group } from 'three';
+import { DRAG_THRESHOLD } from '../camera/orbit';
 import type { FxState } from '../director/fx';
 import { ModelBoundary, ReaperModel } from './ReaperModel';
 import { StaticInstances, trs } from '../instancing/StaticInstances';
@@ -78,7 +79,8 @@ export function ReaperDesk({ fx, idle = false, rollCall = false, glanceAt = [], 
       <group
         onClick={(e) => {
           e.stopPropagation();
-          if (lines.length) setBubble(lines[Math.floor(Math.random() * lines.length)]!);
+          // The end of a camera drag that started on the reaper is not a tap.
+          if (lines.length && e.delta <= DRAG_THRESHOLD) setBubble(lines[Math.floor(Math.random() * lines.length)]!);
         }}
       >
         {modelUrl ? (

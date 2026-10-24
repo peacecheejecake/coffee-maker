@@ -1,7 +1,8 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { Matrix4 } from 'three';
-import { CameraRig } from './camera/CameraRig';
+import { CameraRig, type CameraHandle } from './camera/CameraRig';
+import { useOrbitInput } from './camera/useOrbitInput';
 import { CupInstances, restingMatrices } from './cups/CupInstances';
 import type { DirectorEnv } from './director/director';
 import { createFx, type FxState, type Leaving } from './director/fx';
@@ -50,9 +51,14 @@ export interface TowerSceneProps {
   onReaperReady?: () => void;
   /** "demand" (default) renders only when something changes; "always" for profiling. */
   frameloop?: 'demand' | 'always';
+  /** On-screen zoom buttons (their accessible labels); omitted = no buttons. Drag/wheel/pinch work regardless. */
+  zoomButtons?: { zoomIn: string; zoomOut: string };
   /** Extra scene children, e.g. dev probes. */
   children?: ReactNode;
 }
+
+/** Zoom step of the on-screen buttons. */
+const ZOOM_STEP = 1.25;
 
 const isCoarsePointer = () => typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 const prefersReducedMotion = () =>
@@ -76,6 +82,7 @@ export function TowerScene({
   reaperModelUrl,
   onReaperReady,
   frameloop = 'demand',
+  zoomButtons,
   children,
 }: TowerSceneProps) {
   const fx = useRef<FxState>(createFx());
@@ -83,6 +90,11 @@ export function TowerScene({
   const [fxFocus, setFxFocus] = useState<string | null>(null);
   const reduced = useMemo(() => reducedMotion ?? prefersReducedMotion(), [reducedMotion]);
   const suppressClick = useRef(false);
+  const cameraHandle = useRef<CameraHandle>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  // A drag that turned the camera is not a tap: swallow the click it ends with.
+  const onDrag = useCallback(() => void (suppressClick.current = true), []);
+  useOrbitInput(stage, cameraHandle, onDrag);
 
   const placed = useMemo(() => placeTowers(model.towers), [model.towers]);
   const resting = useMemo(() => restingMatrices(placed), [placed]);
@@ -170,66 +182,80 @@ export function TowerScene({
   );
 
   return (
-    // A tap while something animates skips to the end instead of selecting.
-    <div
-      style={{ position: 'absolute', inset: 0 }}
-      onPointerDownCapture={() => {
-        suppressClick.current = runner.current?.skip() ?? false;
-      }}
-    >
-      <Canvas
-        frameloop={frameloop}
-        dpr={[1, isCoarsePointer() ? 1.5 : 2]}
-        camera={{ fov: 35, near: 0.1, far: 300, position: [0, 6, 20] }}
-        gl={{ alpha: true, antialias: true }}
-        onPointerMissed={() => select(null)}
+    <div style={{ position: 'absolute', inset: 0 }}>
+      {/* A tap while something animates skips to the end instead of selecting. */}
+      <div
+        ref={stage}
+        style={{ position: 'absolute', inset: 0, touchAction: 'none' }}
+        onPointerDownCapture={() => {
+          suppressClick.current = runner.current?.skip() ?? false;
+        }}
       >
-        <Lighting timeOfDay={timeOfDay} />
-        <Floor shadowKey={shadowKey} />
-        <ReaperDesk
-          fx={fx}
-          idle={idle}
-          rollCall={rollCall}
-          glanceAt={glanceAt}
-          {...(reaperLines && { lines: reaperLines })}
-          {...(reaperModelUrl && { modelUrl: reaperModelUrl })}
-          {...(onReaperReady && { onModelReady: onReaperReady })}
-        />
-        <CupInstances towers={placed} fx={fx} hidden={hidden} idleSway={idle} />
-        <TowerFixtures towers={placed} fx={fx} />
-        <BallotPlaques towers={placed} />
-        <PedestalLotuses towers={placed} />
-        <Decorations towers={placed} />
-        {idle && (
-          <>
-            <Wisps />
-            <Steam towers={placed} />
-          </>
-        )}
-        <IdleTicker enabled={idle && frameloop === 'demand'} />
-        {placed.map((p) => (
-          <Tower key={p.tower.id} placed={p} fontUrl={fontFor(p.tower.name)} onSelect={select} />
-        ))}
-        <FxLayer fx={fx} ghosts={ghosts} />
-        <Runner
-          events={events}
-          onConsumed={consume}
-          fx={fx}
-          env={env}
-          reduced={reduced}
-          timeScale={timeScale}
-          onFocus={setFxFocus}
-          handle={runner}
-        />
-        {onAnimatingChange && <BusyReporter runner={runner} onChange={onAnimatingChange} />}
-        <CameraRig
-          bounds={bounds}
-          margin={focusId || deskFocus ? 0.12 : 0.06}
-          {...(!focusId && !deskFocus && { maxHeightFactor: 1.15 })}
-          stiffness={fxFocus ? 3 : 4}
-        />
-        {children}
-      </Canvas>
+        <Canvas
+          frameloop={frameloop}
+          dpr={[1, isCoarsePointer() ? 1.5 : 2]}
+          camera={{ fov: 35, near: 0.1, far: 300, position: [0, 6, 20] }}
+          gl={{ alpha: true, antialias: true }}
+          onPointerMissed={() => select(null)}
+        >
+          <Lighting timeOfDay={timeOfDay} />
+          <Floor shadowKey={shadowKey} />
+          <ReaperDesk
+            fx={fx}
+            idle={idle}
+            rollCall={rollCall}
+            glanceAt={glanceAt}
+            {...(reaperLines && { lines: reaperLines })}
+            {...(reaperModelUrl && { modelUrl: reaperModelUrl })}
+            {...(onReaperReady && { onModelReady: onReaperReady })}
+          />
+          <CupInstances towers={placed} fx={fx} hidden={hidden} idleSway={idle} />
+          <TowerFixtures towers={placed} fx={fx} />
+          <BallotPlaques towers={placed} />
+          <PedestalLotuses towers={placed} />
+          <Decorations towers={placed} />
+          {idle && (
+            <>
+              <Wisps />
+              <Steam towers={placed} />
+            </>
+          )}
+          <IdleTicker enabled={idle && frameloop === 'demand'} />
+          {placed.map((p) => (
+            <Tower key={p.tower.id} placed={p} fontUrl={fontFor(p.tower.name)} onSelect={select} />
+          ))}
+          <FxLayer fx={fx} ghosts={ghosts} />
+          <Runner
+            events={events}
+            onConsumed={consume}
+            fx={fx}
+            env={env}
+            reduced={reduced}
+            timeScale={timeScale}
+            onFocus={setFxFocus}
+            handle={runner}
+          />
+          {onAnimatingChange && <BusyReporter runner={runner} onChange={onAnimatingChange} />}
+          <CameraRig
+            bounds={bounds}
+            margin={focusId || deskFocus ? 0.12 : 0.06}
+            {...(!focusId && !deskFocus && { maxHeightFactor: 1.15 })}
+            stiffness={fxFocus ? 3 : 4}
+            handle={cameraHandle}
+          />
+          {children}
+        </Canvas>
+      </div>
+      {zoomButtons && (
+        <div className="cm-zoom" role="group">
+          <button type="button" aria-label={zoomButtons.zoomIn} title={zoomButtons.zoomIn} onClick={() => cameraHandle.current?.zoomBy(1 / ZOOM_STEP)}>
+            +
+          </button>
+          <button type="button" aria-label={zoomButtons.zoomOut} title={zoomButtons.zoomOut} onClick={() => cameraHandle.current?.zoomBy(ZOOM_STEP)}>
+            −
+          </button>
+        </div>
+      )}
     </div>
   );
 }

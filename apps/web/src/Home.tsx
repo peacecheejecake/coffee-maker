@@ -48,7 +48,7 @@ export function Home({ autoDemo = false }: { autoDemo?: boolean }) {
   }, [autoDemo, offerDemo, status, groupId, startDemo]);
 
   // The demo is a local-only sandbox; in a synced app it would be pushed to the server.
-  return <AppShell {...(!syncEnabled && sync === 'local' && { onDemo: startDemo })} renderScene={(p) => <SceneView {...p} />} />;
+  return <AppShell {...(!syncEnabled && sync === 'local' && { onDemo: startDemo })} renderScene={(p) => <SceneView {...p} controls />} />;
 }
 
 /** Office TV: same scene and live feed, no controls (open /tv on the screen's browser). */
@@ -56,7 +56,11 @@ export function TvHome() {
   return <TvShell renderScene={(p) => <SceneView {...p} />} />;
 }
 
-function SceneView({ focusId, focusDesk, onSelectTower }: SceneSlotProps) {
+/** Zoom button labels (both tones speak Korean). */
+const ZOOM_BUTTONS = { zoomIn: '확대', zoomOut: '축소' };
+
+/** `controls`: on-screen zoom buttons (not on the TV, which nobody touches). */
+function SceneView({ focusId, focusDesk, onSelectTower, controls = false }: SceneSlotProps & { controls?: boolean }) {
   const ledger = useLedger((s) => s.ledger);
   const events = useLedger((s) => s.events);
   const groupId = useLedger((s) => s.groupId);
@@ -104,6 +108,7 @@ function SceneView({ focusId, focusDesk, onSelectTower }: SceneSlotProps) {
             resolveFont={fontFor}
             reaperModelUrl={REAPER_MODEL_URL}
             onReaperReady={markReaperReady}
+            {...(controls && { zoomButtons: ZOOM_BUTTONS })}
           />
         </Suspense>
       </SceneBoundary>
