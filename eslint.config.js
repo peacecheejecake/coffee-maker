@@ -13,6 +13,9 @@ export default tseslint.config(
       // Native projects contain copied web bundles and generated code.
       'apps/mobile/ios/**',
       'apps/mobile/android/**',
+      // Prebuilt deploy output (scripts/deploy-web.mjs) and agent worktrees.
+      '.vercel/**',
+      '.claude/**',
     ],
   },
   js.configs.recommended,
