@@ -56,17 +56,17 @@ function OwnerTransfer({ me }: { me: PlayerId }) {
   const run = useCommand();
   const api = useStoreApi();
   const ledger = useLedger((s) => s.ledger);
-  const unclaimedPlayers = useLedger((s) => s.unclaimedPlayers);
-  const [unclaimed, setUnclaimed] = useState<PlayerId[]>([]);
+  const claims = useLedger((s) => s.claims);
+  const [claimed, setClaimed] = useState<PlayerId[] | null>(null);
   const [to, setTo] = useState<PlayerId | ''>('');
   const [confirming, setConfirming] = useState(false);
 
   // With sync, only players bound to an account can take over (the server moves the role with them).
   useEffect(() => {
-    if (api.remote) void unclaimedPlayers().then(setUnclaimed);
-  }, [api.remote, unclaimedPlayers, ledger.playerOrder.length]);
+    if (api.remote) void claims().then((cs) => setClaimed(cs.map((c) => c.playerId)));
+  }, [api.remote, claims, ledger.playerOrder.length]);
 
-  const candidates = activePlayers(ledger).filter((p) => p.id !== me && !unclaimed.includes(p.id));
+  const candidates = activePlayers(ledger).filter((p) => p.id !== me && (!api.remote || claimed?.includes(p.id)));
   if (candidates.length === 0) return <p className="cm-muted">{t('owner.noCandidates')}</p>;
 
   const target = to ? ledger.players[to] : undefined;

@@ -101,7 +101,10 @@ PUSH_E2E=1 PUSH_TLS_DIR=/tmp/pushtls NOTIFY_SECRET=$(grep ^NOTIFY_SECRET= supaba
 pnpm supabase login && npx vercel@65.2.0 login
 pnpm supabase link --project-ref <ref>    # 대시보드에서 만든 프로젝트
 pnpm supabase db push
-# 대시보드: Authentication → Anonymous sign-ins 켜기, Site URL/Redirect URLs에 Vercel 주소 추가
+# 대시보드: Authentication → Anonymous sign-ins 켜기(링크로 몰래 보기), Site URL에 Vercel 주소,
+#   Redirect URLs에 https://<도메인>/** (로그인 후 시작한 페이지로 돌아옴)
+# 대시보드: Authentication → Providers → Google 켜기. Google Cloud Console의 OAuth 클라이언트(웹)에
+#   승인된 리디렉션 URI로 https://<ref>.supabase.co/auth/v1/callback 등록 후 Client ID/Secret 입력
 # apps/web/.env.production.local 에 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (선택: VITE_VAPID_PUBLIC_KEY)
 pnpm deploy:web                           # 로컬에서 빌드해 Vercel에 prebuilt 정적 사이트로 배포(--prod)
 ```

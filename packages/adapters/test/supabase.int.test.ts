@@ -33,6 +33,14 @@ const seoulDate = (days = 0) =>
 const joined = (groupId: string, id: string, role = 'member') =>
   ev(groupId, id, { type: 'PlayerJoined', player: { id, name: id, role, appearance: { color: '#000' }, archived: false } });
 
+/** A non-anonymous account (the local stack confirms email sign-ups immediately), standing in for Google. */
+async function signedIn() {
+  const r = remote();
+  const { error } = await r.client.auth.signUp({ email: `${uid()}@example.test`, password: 'password-1234' });
+  if (error) throw new Error(error.message);
+  return r;
+}
+
 /** Owner A with a registered group, and member B who joined and claimed a player. */
 async function setup() {
   const a = remote();
@@ -57,7 +65,7 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     expect(await b.joinGroup(inviteCode.toLowerCase())).toEqual({ groupId, playerId: pb });
     await expect(b.claimPlayer(groupId, pa)).rejects.toThrow(/player_taken/);
     await expect(b.joinGroup('NOPE0000')).rejects.toThrow(/invalid_invite/);
-    expect((await a.claimedPlayers(groupId)).sort()).toEqual([pa, pb].sort());
+    expect((await a.claimedPlayers(groupId)).map((c) => c.playerId).sort()).toEqual([pa, pb].sort());
     expect(await b.inviteCode(groupId)).toBe(inviteCode);
   });
 
@@ -168,7 +176,7 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     await a.savePushSubscription(groupId, sub);
     await a.deletePushSubscription(sub.endpoint);
     expect((await a.client.from('push_subscriptions').select('endpoint')).data).toEqual([]);
-    expect(await a.account()).toEqual({ anonymous: true });
+    expect(await a.account()).toMatchObject({ anonymous: true });
   });
 
   it('RLS: outsiders read nothing and nobody writes tables directly', async () => {
@@ -284,5 +292,41 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     expect(twice?.error).toMatch(/already_voted/);
     const [steal] = await b.push([ev(groupId, pb, { type: 'MotionWithdrawn', motionId: open.id })]);
     expect(steal?.error).toMatch(/not_proposer/);
+  });
+
+  it('invite links: anyone can watch read-only and live; members get their player back', async () => {
+    const { a, b, groupId, pa, pb, inviteCode } = await setup();
+    const viewer = remote();
+    await viewer.ensureSession();
+    expect(await viewer.viewGroup(inviteCode)).toEqual({ groupId, member: false, playerId: null });
+    expect((await viewer.pull(groupId, 0)).length).toBeGreaterThanOrEqual(2);
+    expect(await viewer.inviteCode(groupId)).toBe(inviteCode);
+    // Watching is not taking part.
+    expect((await viewer.push([ev(groupId, pa, { type: 'LateRecorded', playerId: pb })]))[0]!.error).toMatch(/not_actor/);
+    expect(await b.viewGroup(inviteCode)).toEqual({ groupId, member: true, playerId: pb });
+    await expect(viewer.viewGroup('NOPE0000')).rejects.toThrow(/invalid_invite/);
+    expect(await a.myGroups()).toMatchObject([{ groupId, role: 'owner', playerId: pa, inviteCode }]);
+    expect(await viewer.myGroups()).toEqual([]);
+  });
+
+  it('accounts: list their groups; a signed-in account can take over a name held by an anonymous one', async () => {
+    const { groupId, pb, inviteCode } = await setup();
+    expect(await remote().account()).toBeNull();
+    const g = await signedIn();
+    expect(await g.account()).toMatchObject({ anonymous: false, email: expect.stringContaining('@') });
+    await g.joinGroup(inviteCode);
+    expect(await g.claimedPlayers(groupId)).toContainEqual({ playerId: pb, anonymous: true });
+    await g.claimPlayer(groupId, pb);
+    expect(await g.claimedPlayers(groupId)).toContainEqual({ playerId: pb, anonymous: false });
+    const [mine] = await g.myGroups();
+    expect(mine).toMatchObject({ groupId, inviteCode, role: 'member', playerId: pb, playerName: pb, members: 3 });
+
+    const anon = remote();
+    await anon.ensureSession();
+    await anon.joinGroup(inviteCode);
+    const other = await signedIn();
+    await other.joinGroup(inviteCode);
+    await expect(anon.claimPlayer(groupId, pb)).rejects.toThrow(/player_taken/);
+    await expect(other.claimPlayer(groupId, pb)).rejects.toThrow(/player_taken/);
   });
 });

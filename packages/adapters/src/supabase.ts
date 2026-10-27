@@ -1,4 +1,4 @@
-import type { AssetStore, PushResult, RemoteStatus, RemoteSync } from '@coffee/app';
+import type { AssetStore, GroupSummary, PushResult, RemoteStatus, RemoteSync } from '@coffee/app';
 import { asGroupId, asPlayerId, upcast, type GroupId, type LedgerEvent, type RawEvent } from '@coffee/core';
 import { createClient, type SupabaseClient, type SupabaseClientOptions } from '@supabase/supabase-js';
 
@@ -54,13 +54,49 @@ export function createSupabaseRemote(
       return { groupId: asGroupId(row.group_id), playerId: row.player_id ? asPlayerId(row.player_id) : null };
     },
 
+    async viewGroup(code) {
+      const rows = check(await client.rpc('view_group', { p_code: code })) as {
+        group_id: string;
+        member: boolean;
+        player_id: string | null;
+      }[];
+      const row = rows[0];
+      if (!row) throw new Error('invalid_invite');
+      return {
+        groupId: asGroupId(row.group_id),
+        member: row.member,
+        playerId: row.player_id ? asPlayerId(row.player_id) : null,
+      };
+    },
+
     async claimPlayer(groupId, playerId) {
       check(await client.rpc('claim_player', { p_group_id: groupId, p_player_id: playerId }));
     },
 
     async claimedPlayers(groupId) {
-      const rows = check(await client.from('members').select('player_id').eq('group_id', groupId).not('player_id', 'is', null));
-      return (rows ?? []).map((r: { player_id: string }) => asPlayerId(r.player_id));
+      const rows = check(await client.rpc('player_claims', { p_group_id: groupId })) as { player_id: string; anonymous: boolean }[];
+      return (rows ?? []).map((r) => ({ playerId: asPlayerId(r.player_id), anonymous: r.anonymous }));
+    },
+
+    async myGroups() {
+      const rows = check(await client.rpc('my_groups')) as {
+        group_id: string;
+        name: string;
+        invite_code: string;
+        role: GroupSummary['role'];
+        player_id: string | null;
+        player_name: string | null;
+        members: number;
+      }[];
+      return (rows ?? []).map((r) => ({
+        groupId: asGroupId(r.group_id),
+        name: r.name,
+        inviteCode: r.invite_code,
+        role: r.role,
+        playerId: r.player_id ? asPlayerId(r.player_id) : null,
+        playerName: r.player_name,
+        members: Number(r.members),
+      }));
     },
 
     async inviteCode(groupId) {
@@ -126,8 +162,20 @@ export function createSupabaseRemote(
     },
 
     async account() {
-      const { data } = await client.auth.getUser();
-      return { anonymous: data.user?.is_anonymous ?? true, ...(data.user?.email && { email: data.user.email }) };
+      // The stored session, not getUser(): this runs on start-up, possibly offline.
+      const user = (await client.auth.getSession()).data.session?.user;
+      if (!user) return null;
+      return { id: user.id, anonymous: user.is_anonymous ?? false, ...(user.email && { email: user.email }) };
+    },
+
+    async signIn(provider, returnTo) {
+      const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: returnTo } });
+      if (error) throw new Error(error.message);
+    },
+
+    async signOut() {
+      const { error } = await client.auth.signOut();
+      if (error) throw new Error(error.message);
     },
 
     async linkAccount(provider) {

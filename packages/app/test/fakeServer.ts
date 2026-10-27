@@ -10,7 +10,9 @@ interface Member {
 export class FakeServer {
   seq = 0;
   events: LedgerEvent[] = [];
-  groups = new Map<string, { invite: string; members: Map<string, Member> }>();
+  groups = new Map<string, { invite: string; members: Map<string, Member>; viewers: Set<string> }>();
+  /** Accounts that signed in with a provider; everyone else is anonymous. */
+  signedIn = new Set<string>();
   subs = new Set<{ groupId: string; cb: (e: LedgerEvent[]) => void }>();
   constructor(public now: () => Date) {}
 
@@ -26,7 +28,7 @@ export class FakeServer {
       async createGroup({ groupId, playerId }) {
         await guard();
         const invite = `INV${server.groups.size + 1}`;
-        server.groups.set(groupId, { invite, members: new Map([[userId, { playerId, role: 'owner' }]]) });
+        server.groups.set(groupId, { invite, members: new Map([[userId, { playerId, role: 'owner' }]]), viewers: new Set() });
         return { inviteCode: invite };
       },
       async joinGroup(code) {
@@ -37,15 +39,40 @@ export class FakeServer {
         if (!g.members.has(userId)) g.members.set(userId, { playerId: null, role: 'member' });
         return { groupId: asGroupId(id), playerId: g.members.get(userId)!.playerId };
       },
+      async viewGroup(code) {
+        await guard();
+        const entry = [...server.groups.entries()].find(([, g]) => g.invite === code.toUpperCase());
+        if (!entry) throw new Error('invalid_invite');
+        const [id, g] = entry;
+        const m = g.members.get(userId);
+        if (!m) g.viewers.add(userId);
+        return { groupId: asGroupId(id), member: !!m, playerId: m?.playerId ?? null };
+      },
       async claimPlayer(groupId, playerId) {
         await guard();
         const g = server.groups.get(groupId)!;
-        for (const [u, m] of g.members) if (u !== userId && m.playerId === playerId) throw new Error('player_taken');
+        if (!g.members.has(userId)) throw new Error('not_member');
+        for (const [u, m] of g.members) {
+          if (u === userId || m.playerId !== playerId) continue;
+          if (!server.signedIn.has(userId) || server.signedIn.has(u)) throw new Error('player_taken');
+          m.playerId = null;
+        }
         g.members.get(userId)!.playerId = playerId;
       },
       async claimedPlayers(groupId) {
         await guard();
-        return [...server.groups.get(groupId)!.members.values()].flatMap((m) => (m.playerId ? [m.playerId] : []));
+        return [...server.groups.get(groupId)!.members.entries()].flatMap(([u, m]) =>
+          m.playerId ? [{ playerId: m.playerId, anonymous: !server.signedIn.has(u) }] : [],
+        );
+      },
+      async myGroups() {
+        await guard();
+        return [...server.groups.entries()].flatMap(([id, g]) => {
+          const m = g.members.get(userId);
+          return m
+            ? [{ groupId: asGroupId(id), name: '', inviteCode: g.invite, role: m.role, playerId: m.playerId, playerName: null, members: g.members.size }]
+            : [];
+        });
       },
       async inviteCode(groupId) {
         return server.groups.get(groupId)?.invite ?? null;
@@ -56,13 +83,17 @@ export class FakeServer {
       },
       async pull(groupId: GroupId, after: number) {
         await guard();
+        const g = server.groups.get(groupId);
+        if (!g?.members.has(userId) && !g?.viewers.has(userId)) return [];
         return server.events.filter((e) => e.groupId === groupId && e.seq! > after);
       },
       savePushSubscription: async () => {},
       deletePushSubscription: async () => {},
       saveNativePushToken: async () => {},
       deleteNativePushToken: async () => {},
-      account: async () => ({ anonymous: true }),
+      account: async () => ({ id: userId, anonymous: !server.signedIn.has(userId) }),
+      signIn: async () => {},
+      signOut: async () => {},
       linkAccount: async () => {},
       subscribe(groupId, cb, onStatus: (s: RemoteStatus) => void) {
         const sub = { groupId, cb: (e: LedgerEvent[]) => net.online && cb(e) };

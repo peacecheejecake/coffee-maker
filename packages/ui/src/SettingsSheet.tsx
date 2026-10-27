@@ -437,6 +437,12 @@ function InviteSection() {
   const { toast, platform } = useUi();
   const sync = useLedger((s) => s.sync);
   const code = useLedger((s) => s.inviteCode);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [copied]);
   if (sync === 'local') return null;
   const url = code ? `${location.origin}/join/${code}` : null;
   return (
@@ -453,10 +459,16 @@ function InviteSection() {
               onClick={async () => {
                 await navigator.clipboard?.writeText(url);
                 toast(t('invite.copied'));
+                setCopied(true);
               }}
             >
               {t('invite.copy')}
             </button>
+            {copied && (
+              <span className="cm-copied" role="img" aria-label={t('invite.copied')}>
+                ✓
+              </span>
+            )}
             {platform.canShare({ url }) && (
               <button type="button" className="cm-button" onClick={() => void platform.share({ title: t('app.title'), url })}>
                 {t('invite.share')}
@@ -572,11 +584,9 @@ function AccountSection() {
   const { toast } = useUi();
   const api = useStoreApi();
   const sync = useLedger((s) => s.sync);
-  const [account, setAccount] = useState<{ anonymous: boolean; email?: string } | null>(null);
-  useEffect(() => {
-    if (sync === 'local' || !api.remote) return;
-    void api.remote.account().then(setAccount, () => setAccount(null));
-  }, [api, sync]);
+  const account = useLedger((s) => s.account);
+  const closeGroup = useLedger((s) => s.closeGroup);
+  const signOut = useLedger((s) => s.signOut);
   if (sync === 'local' || !api.remote || !account) return null;
   const link = async (provider: 'google' | 'apple') => {
     try {
@@ -601,7 +611,17 @@ function AccountSection() {
           </div>
         </div>
       ) : (
-        <p className="cm-muted">{t('settings.account.linked', { email: account.email ?? '' })}</p>
+        <div className="cm-form">
+          <p className="cm-muted">{t('settings.account.linked', { email: account.email ?? '' })}</p>
+          <div className="cm-row cm-wrap">
+            <button type="button" className="cm-button" onClick={() => void closeGroup()}>
+              {t('settings.groups')}
+            </button>
+            <button type="button" className="cm-button cm-button-ghost" onClick={() => void signOut()}>
+              {t('account.logout')}
+            </button>
+          </div>
+        </div>
       )}
     </section>
   );

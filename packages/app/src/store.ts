@@ -22,10 +22,13 @@ import { createStore, type StoreApi } from 'zustand/vanilla';
 import { canonicalOrder, mergeEvents } from './ordering';
 import {
   systemClock,
+  type Account,
   type AssetStore,
   type Clock,
   type EventStore,
+  type GroupSummary,
   type MetaStore,
+  type PlayerClaim,
   type PushPort,
   type PushResult,
   type RemoteSync,
@@ -67,6 +70,8 @@ export interface LedgerStoreState {
   remoteFeed: LedgerEvent[];
   /** Local events the server refused (e.g. a vote after the deadline); removed from the ledger. */
   rejections: Rejection[];
+  /** The signed-in (or anonymous) account; null without a remote or before the first session. */
+  account: Account | null;
 }
 
 export interface LedgerActions {
@@ -78,12 +83,28 @@ export interface LedgerActions {
   importGroup(groupId: GroupId, me: PlayerId, events: LedgerEvent[]): Promise<void>;
   /** Joins a shared group by invite code and downloads its ledger. Needs a remote. */
   joinByInvite(code: string): Promise<void>;
-  /** Players in the group that no account has claimed yet. */
-  unclaimedPlayers(): Promise<PlayerId[]>;
-  /** Binds this account to an existing player (after joining). */
+  /**
+   * Opens a shared group from an invite link without joining it: a member continues as their player, anyone
+   * else watches read-only (me stays null) until they claim or register a player.
+   */
+  openInvite(code: string): Promise<void>;
+  /** Players of the active group already bound to an account. */
+  claims(): Promise<PlayerClaim[]>;
+  /** Joins the active group (if not yet a member) and binds this account to an existing player. */
   claim(playerId: PlayerId): Promise<void>;
-  /** Creates a new player for this account (after joining). */
+  /** Joins the active group (if not yet a member) and creates a new player for this account. */
   registerSelf(name: string, appearance: PlayerAppearance): Promise<Decision>;
+  /** Groups of the current account (server). */
+  myGroups(): Promise<GroupSummary[]>;
+  /** Makes one of the account's groups the active one. */
+  openGroup(group: GroupSummary): Promise<void>;
+  /** Leaves the active group's screen (back to the group list); nothing is deleted. */
+  closeGroup(): Promise<void>;
+  /** Re-reads the session; after an account switch, re-resolves who this account is in the active group. */
+  refreshAccount(): Promise<void>;
+  /** Starts a Google sign-in redirect that comes back to `returnTo`. */
+  signIn(returnTo: string): Promise<void>;
+  signOut(): Promise<void>;
   dispatch(cmd: Command): Promise<Decision>;
   /** Local-only groups: pick who uses this device. Shared groups bind it via claim(). */
   setMe(id: PlayerId): Promise<void>;
@@ -140,6 +161,8 @@ export interface LedgerStoreDeps {
 
 const META = {
   group: 'activeGroup',
+  /** Account the device state below belongs to; a different one after sign-in means `me` must be re-resolved. */
+  account: 'account',
   me: (g: GroupId) => `me:${g}`,
   invite: (g: GroupId) => `invite:${g}`,
   /** Set once the group exists on the server (a group created offline is registered later). */
@@ -228,12 +251,14 @@ export function createLedgerStore({
       inviteCode: null,
       remoteFeed: [],
       rejections: [],
+      account: null,
 
       async init() {
         set({ status: 'loading' });
         try {
           const groupId = await meta.get<GroupId>(META.group);
           if (groupId) await loadGroup(groupId);
+          if (remote) await get().refreshAccount();
           set({ status: 'ready' });
         } catch (e) {
           set({ status: 'error', loadError: e instanceof Error ? e.message : String(e) });
@@ -296,16 +321,34 @@ export function createLedgerStore({
           await meta.set(META.invite(groupId), code.toUpperCase());
         }),
 
-      async unclaimedPlayers() {
-        const { groupId, ledger } = get();
+      openInvite: (code) =>
+        serial(async () => {
+          if (!remote) throw new Error('Sync is not configured');
+          // Watching needs a session too; without a sign-in it is an anonymous one.
+          await remote.ensureSession();
+          const { groupId, playerId } = await remote.viewGroup(code);
+          await meta.set(META.group, groupId);
+          await meta.set(META.shared(groupId), true);
+          await meta.set(META.registered(groupId), true);
+          await meta.set(META.invite(groupId), code.toUpperCase());
+          await meta.set(META.me(groupId), playerId);
+          await eventStore.put(await remote.pull(groupId, 0));
+          await loadGroup(groupId);
+          const account = await remote.account();
+          if (account) await meta.set(META.account, account.id);
+          set({ account });
+        }),
+
+      async claims() {
+        const { groupId } = get();
         if (!remote || !groupId) return [];
-        const claimed = new Set(await remote.claimedPlayers(groupId));
-        return ledger.playerOrder.filter((id) => !claimed.has(id) && !ledger.players[id]?.archived);
+        return remote.claimedPlayers(groupId);
       },
 
       async claim(playerId) {
         const { groupId } = get();
         if (!remote || !groupId) return;
+        await joinActive();
         await remote.claimPlayer(groupId, playerId);
         await meta.set(META.me(groupId), playerId);
         set({ me: playerId });
@@ -317,10 +360,68 @@ export function createLedgerStore({
         const { groupId } = get();
         if (!remote || !groupId) return fail('NotPermitted', 'Sync is not configured');
         const id = asPlayerId(newId());
+        await joinActive();
         await remote.claimPlayer(groupId, id);
         await meta.set(META.me(groupId), id);
         set({ me: id });
         return serial(() => run({ type: 'AddPlayer', id, name, appearance }, id, groupId));
+      },
+
+      async myGroups() {
+        if (!remote) return [];
+        return remote.myGroups();
+      },
+
+      openGroup: (group) =>
+        serial(async () => {
+          const { groupId } = group;
+          await meta.set(META.group, groupId);
+          await meta.set(META.shared(groupId), true);
+          await meta.set(META.registered(groupId), true);
+          await meta.set(META.invite(groupId), group.inviteCode);
+          await meta.set(META.me(groupId), group.playerId);
+          // Best effort: the sync engine pulls anyway once the group is active.
+          const local = await eventStore.load(groupId);
+          if (remote && local.length === 0) await eventStore.put(await remote.pull(groupId, 0)).catch(() => undefined);
+          await loadGroup(groupId);
+        }),
+
+      closeGroup: () =>
+        serial(async () => {
+          await meta.set(META.group, null);
+          set({ groupId: null, me: null, events: [], ledger: emptyState(), inviteCode: null, undo: null, sync: 'local' });
+        }),
+
+      async refreshAccount() {
+        if (!remote) return;
+        const account = await remote.account();
+        set({ account });
+        if (!account) return;
+        const previous = await meta.get<string>(META.account);
+        await meta.set(META.account, account.id);
+        if (previous === undefined || previous === account.id) return;
+        // Signed in as someone else (e.g. back from Google): who are we in the open group now?
+        const { groupId, inviteCode } = get();
+        if (!groupId) return;
+        if (!inviteCode) return void (await get().closeGroup());
+        try {
+          const { playerId } = await remote.viewGroup(inviteCode);
+          await meta.set(META.me(groupId), playerId);
+          set({ me: playerId, undo: null });
+        } catch {
+          await get().closeGroup();
+        }
+      },
+
+      async signIn(returnTo) {
+        await remote?.signIn('google', returnTo);
+      },
+
+      async signOut() {
+        if (!remote) return;
+        await remote.signOut();
+        await get().closeGroup();
+        set({ account: null });
       },
 
       dispatch: (cmd) =>
@@ -461,6 +562,12 @@ export function createLedgerStore({
     };
   });
 
+  /** Participating needs membership; viewers become members here. */
+  async function joinActive() {
+    const { inviteCode } = store.getState();
+    if (remote && inviteCode) await remote.joinGroup(inviteCode);
+  }
+
   async function registerGroup(groupId: GroupId, me: PlayerId, name: string) {
     if (!remote) return;
     await remote.ensureSession();
@@ -473,9 +580,11 @@ export function createLedgerStore({
   /** For the sync engine: make sure a group created offline exists on the server before pushing. */
   const ensureRegistered = async () => {
     const { groupId, me, ledger } = store.getState();
-    if (!remote || !groupId || !me) return false;
+    if (!remote || !groupId) return false;
     if (!(await meta.get<boolean>(META.shared(groupId)))) return false;
+    // A viewer (no player yet) still syncs: pull and live updates, nothing to push.
     if (await meta.get<boolean>(META.registered(groupId))) return true;
+    if (!me) return false;
     await registerGroup(groupId, me, ledger.players[me]?.name ?? '');
     return true;
   };

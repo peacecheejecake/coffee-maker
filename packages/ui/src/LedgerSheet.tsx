@@ -125,6 +125,8 @@ function RecordRow({
   const now = nowIso();
   const review = openProposal(ledger, r.id, now);
   const active = r.status === 'active';
+  // Viewers (no player of their own) only read.
+  const canAct = active && me !== null;
   const canRetract = active && !r.origin && r.recordedBy === me && minutesBetween(r.recordedAt, now) <= RETRACT_WINDOW_MINUTES;
 
   async function propose() {
@@ -173,7 +175,7 @@ function RecordRow({
             </div>
           )}
 
-          {active && (
+          {canAct && (
             <div className="cm-row cm-wrap">
               {/* Attendance records are judged by server time; cups there change through adjust motions. */}
               {ledger.mode === 'shared' && (
@@ -198,7 +200,7 @@ function RecordRow({
             </div>
           )}
 
-          {active && proposing && !review && (
+          {canAct && proposing && !review && (
             <form
               className="cm-form cm-inset"
               onSubmit={(e) => {

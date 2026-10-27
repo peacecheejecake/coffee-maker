@@ -181,3 +181,65 @@ describe('sync', () => {
     expect(store.getState().sync).toBe('local');
   });
 });
+
+describe('invite links and accounts', () => {
+  it('opening an invite link watches read-only, live, until registering', async () => {
+    const { server, a, b, code } = await twoDevices();
+    const v = device(server, 'userV');
+    await v.store.getState().openInvite(code);
+    await flush();
+    const viewer = v.store.getState();
+    expect(viewer.me).toBeNull();
+    expect(viewer.ledger.playerOrder).toHaveLength(2);
+    expect(viewer.sync).toBe('synced');
+    expect((await viewer.dispatch({ type: 'RecordArrival', playerId: meOf(b), arrivedAt: '09:30' })).ok).toBe(false);
+
+    await a.getState().dispatch({ type: 'RecordArrival', playerId: meOf(b), arrivedAt: '09:30' });
+    await flush(40);
+    expect(outstanding(v.store.getState().ledger, meOf(b))).toBe(1);
+
+    await v.store.getState().registerSelf('하나', { color: '#00f' });
+    await flush(40);
+    expect(v.store.getState().me).not.toBeNull();
+    expect(a.getState().ledger.players[meOf(v.store)]?.name).toBe('하나');
+  });
+
+  it('a member opening the link again continues as their player', async () => {
+    const { server, b, code } = await twoDevices();
+    const again = device(server, 'userB');
+    await again.store.getState().openInvite(code);
+    expect(again.store.getState().me).toBe(meOf(b));
+  });
+
+  it('a signed-in account can take over a name held by an anonymous one, not by another signed-in one', async () => {
+    const { server, b, code } = await twoDevices();
+    const anon = device(server, 'userE');
+    await anon.store.getState().openInvite(code);
+    expect((await anon.store.getState().claims()).find((c) => c.playerId === meOf(b))).toEqual({ playerId: meOf(b), anonymous: true });
+    await expect(anon.store.getState().claim(meOf(b))).rejects.toThrow(/player_taken/);
+
+    server.signedIn.add('userD');
+    const d = device(server, 'userD');
+    await d.store.getState().openInvite(code);
+    await d.store.getState().claim(meOf(b));
+    expect(d.store.getState().me).toBe(meOf(b));
+    expect(await d.store.getState().claims()).toContainEqual({ playerId: meOf(b), anonymous: false });
+
+    server.signedIn.add('userF');
+    const f = device(server, 'userF');
+    await f.store.getState().openInvite(code);
+    await expect(f.store.getState().claim(meOf(b))).rejects.toThrow(/player_taken/);
+  });
+
+  it('lists the account’s groups and switches between them', async () => {
+    const { a } = await twoDevices();
+    const me = meOf(a);
+    await a.getState().closeGroup();
+    expect(a.getState().groupId).toBeNull();
+    const groups = await a.getState().myGroups();
+    expect(groups).toHaveLength(1);
+    await a.getState().openGroup(groups[0]!);
+    expect(a.getState().me).toBe(me);
+    expect(a.getState().inviteCode).toBe(groups[0]!.inviteCode);
+  });
+});

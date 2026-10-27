@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { CheckInButton, useSettleAttendance } from './Attendance';
 import { BallotsSheet } from './BallotsSheet';
 import { CalendarSheet } from './CalendarSheet';
-import { useLedger, useT } from './context';
+import { useLedger, useT, useUi } from './context';
 import { CorrectSheet } from './CorrectSheet';
 import { LedgerSheet } from './LedgerSheet';
 import { ClaimScreen } from './Claim';
@@ -11,6 +11,7 @@ import { FeedToasts } from './Feed';
 import { Onboarding } from './Onboarding';
 import { RecordSheet } from './RecordSheet';
 import { RedeemSheet } from './RedeemSheet';
+import { peekGroup, setPeekGroup } from './session';
 import { SettingsSheet } from './SettingsSheet';
 import { Toasts } from './Toasts';
 
@@ -45,19 +46,27 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
   const nowIso = useLedger((s) => s.nowIso);
   const sync = useLedger((s) => s.sync);
   const [sheet, setSheet] = useState<SheetState>({ kind: 'none' });
+  // Watching a group without a player of one's own (kept per tab, across the sign-in redirect).
+  const [peeking, setPeeking] = useState(peekGroup);
   const close = () => setSheet({ kind: 'none' });
   useSettleAttendance();
+  const peek = (id: string | null) => {
+    setPeekGroup(id);
+    setPeeking(id);
+  };
 
   if (status === 'idle' || status === 'loading') return <div className="cm-center">{t('app.loading')}</div>;
   if (status === 'error') return <div className="cm-center">{t('app.loadError', { message: loadError ?? '' })}</div>;
   if (!groupId) return <Onboarding {...(onDemo && { onDemo })} />;
-  if (!me) return <ClaimScreen />;
+  const viewer = !me;
+  if (viewer && peeking !== groupId) return <ClaimScreen onPeek={() => peek(groupId)} />;
 
-  const ballots =
-    ballotsFor(ledger, me, nowIso()).length + motionBallotsFor(ledger, me, nowIso()).length + awaitingReceipt(ledger, me).length;
+  const ballots = me
+    ? ballotsFor(ledger, me, nowIso()).length + motionBallotsFor(ledger, me, nowIso()).length + awaitingReceipt(ledger, me).length
+    : 0;
   const attendance = ledger.mode === 'attendance';
   const focusId = sheet.kind === 'ledger' ? sheet.playerId : null;
-  const meName = ledger.players[me]?.name ?? '';
+  const meName = me ? (ledger.players[me]?.name ?? '') : '';
 
   return (
     <>
@@ -100,37 +109,45 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
             >
               📅 <span className="cm-hide-narrow">{t('calendar.open')}</span>
             </button>
-            <button type="button" className="cm-pill cm-pill-button" onClick={() => setSheet({ kind: 'ballots' })}>
-              ⚖️ {t('hud.ballots')}
-              {ballots > 0 && (
-                <span className="cm-count" aria-label={`${ballots}`}>
-                  {ballots}
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              className="cm-pill cm-pill-button"
-              aria-label={t('action.settings')}
-              title={t('hud.me', { name: meName })}
-              onClick={() => setSheet({ kind: 'settings' })}
-            >
-              ⚙️ <span className="cm-hide-narrow">{meName}</span>
-            </button>
+            {!viewer && (
+              <>
+                <button type="button" className="cm-pill cm-pill-button" onClick={() => setSheet({ kind: 'ballots' })}>
+                  ⚖️ {t('hud.ballots')}
+                  {ballots > 0 && (
+                    <span className="cm-count" aria-label={`${ballots}`}>
+                      {ballots}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  className="cm-pill cm-pill-button"
+                  aria-label={t('action.settings')}
+                  title={t('hud.me', { name: meName })}
+                  onClick={() => setSheet({ kind: 'settings' })}
+                >
+                  ⚙️ <span className="cm-hide-narrow">{meName}</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
-        <div className="cm-hud-bottom">
-          {attendance ? (
-            <CheckInButton />
-          ) : (
-            <button type="button" className="cm-button cm-button-primary cm-button-large" onClick={() => setSheet({ kind: 'record' })}>
-              📜 {t('action.record')}
+        {viewer ? (
+          <ViewerBar onStop={() => peek(null)} />
+        ) : (
+          <div className="cm-hud-bottom">
+            {attendance ? (
+              <CheckInButton />
+            ) : (
+              <button type="button" className="cm-button cm-button-primary cm-button-large" onClick={() => setSheet({ kind: 'record' })}>
+                📜 {t('action.record')}
+              </button>
+            )}
+            <button type="button" className="cm-button cm-button-large cm-button-secondary" onClick={() => setSheet({ kind: 'redeem' })}>
+              🖋 {t('action.redeem')}
             </button>
-          )}
-          <button type="button" className="cm-button cm-button-large cm-button-secondary" onClick={() => setSheet({ kind: 'redeem' })}>
-            🖋 {t('action.redeem')}
-          </button>
-        </div>
+          </div>
+        )}
       </div>
 
       <RecordSheet
@@ -166,5 +183,48 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
       <Toasts />
       <FeedToasts />
     </>
+  );
+}
+
+/** Floating actions while watching: sign in (to continue as one's own player) or take part. */
+function ViewerBar({ onStop }: { onStop: () => void }) {
+  const t = useT();
+  const { toast } = useUi();
+  const account = useLedger((s) => s.account);
+  const signIn = useLedger((s) => s.signIn);
+  const closeGroup = useLedger((s) => s.closeGroup);
+  const signedIn = !!account && !account.anonymous;
+  return (
+    <div className="cm-floating" role="region" aria-label={t('viewer.badge')}>
+      <div className="cm-floating-text">
+        <strong>{t('viewer.badge')}</strong>
+        <span className="cm-muted">{signedIn ? t('viewer.joinHint') : t('viewer.loginHint')}</span>
+      </div>
+      <div className="cm-row">
+        {signedIn ? (
+          <button type="button" className="cm-button cm-button-primary" onClick={onStop}>
+            {t('viewer.join')}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="cm-button cm-button-primary"
+            onClick={() => signIn(location.href).catch((e: unknown) => toast(e instanceof Error ? e.message : String(e), 'error'))}
+          >
+            {t('account.login')}
+          </button>
+        )}
+        <button
+          type="button"
+          className="cm-button cm-button-ghost"
+          onClick={() => {
+            onStop();
+            void closeGroup();
+          }}
+        >
+          {t('viewer.leave')}
+        </button>
+      </div>
+    </div>
   );
 }

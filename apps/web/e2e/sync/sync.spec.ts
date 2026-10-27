@@ -1,9 +1,27 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { createGroup, openLedger, recordLate, trackErrors } from '../helpers';
 
-/** A fresh browser profile = a separate device with its own anonymous account. */
-async function newDevice(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
+/**
+ * Stands in for Google sign-in: a confirmed email account from the local Auth API, stored where supabase-js
+ * keeps its session (`sb-<host>-auth-token`) before the app loads.
+ */
+async function signIn(context: BrowserContext) {
+  const url = process.env.E2E_SUPABASE_URL!;
+  const res = await fetch(`${url}/auth/v1/signup`, {
+    method: 'POST',
+    headers: { apikey: process.env.E2E_SUPABASE_ANON_KEY!, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: `e2e-${Date.now()}-${Math.random().toString(36).slice(2)}@example.test`, password: 'password-1234' }),
+  });
+  const session = (await res.json()) as { expires_in: number; expires_at?: number };
+  session.expires_at ??= Math.floor(Date.now() / 1000) + session.expires_in;
+  const key = `sb-${new URL(url).hostname.split('.')[0]}-auth-token`;
+  await context.addInitScript(([k, v]) => localStorage.getItem(k) ?? localStorage.setItem(k, v), [key, JSON.stringify(session)] as const);
+}
+
+/** A fresh browser profile = a separate device; signed in to its own account unless `signedIn` is false. */
+async function newDevice(browser: Browser, { signedIn = true } = {}): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext();
+  if (signedIn) await signIn(context);
   const page = await context.newPage();
   return { context, page };
 }
@@ -133,4 +151,29 @@ test('redeem on one device, confirm receipt on another', async ({ browser }) => 
   await expect(ledger.getByText('수령 확인 1/1')).toBeVisible();
   await a.context.close();
   await b.context.close();
+});
+
+test('an invite link can be watched read-only, live, without signing in', async ({ browser }) => {
+  const a = await newDevice(browser);
+  const v = await newDevice(browser, { signedIn: false });
+  await createGroup(a.page, '지원');
+  await joinAs((await newDevice(browser)).page, await inviteLink(a.page), '민수');
+  const url = await inviteLink(a.page);
+
+  await v.page.goto(url);
+  await expect(v.page.getByRole('heading', { name: '당신은 누구십니까?' })).toBeVisible();
+  // Names already taken are listed too, just not pickable.
+  await expect(v.page.getByRole('button', { name: /지원 · 참여 중/ })).toBeDisabled();
+  await v.page.getByRole('button', { name: '👀 몰래 보기' }).click();
+  const bar = v.page.getByRole('region', { name: '👀 몰래 보는 중' });
+  await expect(bar.getByRole('button', { name: 'Google로 로그인' })).toBeVisible();
+  await expect(v.page.getByRole('button', { name: /업보 청구/ })).toHaveCount(0);
+
+  await recordLate(a.page, '민수', '09:30');
+  await expect(towerLabel(v.page, '민수', 1)).toHaveCount(1, { timeout: 15_000 });
+  // Still watching after a reload in the same tab.
+  await v.page.reload();
+  await expect(bar).toBeVisible();
+  await a.context.close();
+  await v.context.close();
 });

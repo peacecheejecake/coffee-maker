@@ -19,6 +19,8 @@ function localSupabase(): { url: string; anonKey: string } | null {
 }
 
 const supabase = localSupabase();
+// For the sync tests, which sign accounts in through the local Auth API.
+if (supabase) Object.assign(process.env, { E2E_SUPABASE_URL: supabase.url, E2E_SUPABASE_ANON_KEY: supabase.anonKey });
 const chrome = {
   // macOS: the installed Chrome (no download). Linux/CI: Playwright's bundled Chromium.
   ...(process.platform === 'darwin' && { channel: 'chrome' }),
