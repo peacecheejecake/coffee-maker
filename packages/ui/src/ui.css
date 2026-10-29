@@ -698,6 +698,13 @@ input[type='color'] {
   font-weight: 700;
 }
 
+.cm-preview-before {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--cm-text-dim);
+  margin-top: 2px;
+}
+
 .cm-preview-basis {
   font-size: 13px;
   color: var(--cm-text-dim);

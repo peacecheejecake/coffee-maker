@@ -39,8 +39,18 @@ export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenCha
   );
 }
 
-/** Example lateness used for the before/after preview. */
-const PREVIEW_MINUTES = 20;
+/** When each cup count starts on a day, judged exactly as check-ins are (so grace and tiers need no re-explaining). */
+export function lateSchedule(rs: Ruleset): { at: string; cups: number }[] {
+  const steps: { at: string; cups: number }[] = [];
+  let last = 0;
+  for (let m = 0; toMinutes(rs.defaultStartTime) + m <= 23 * 60 + 59; m++) {
+    const arrival = addMinutes(rs.defaultStartTime, m);
+    const cups = computeCups(judgeLateness(arrival, rs.defaultStartTime, rs.graceMinutes), rs.cupRule);
+    if (cups !== last) steps.push({ at: arrival, cups });
+    last = cups;
+  }
+  return steps;
+}
 
 function RulesEditor() {
   const t = useT();
@@ -64,10 +74,12 @@ function RulesEditor() {
   const solo = isSoloMember(ledger, me);
   const [confirmAdopt, setConfirmAdopt] = useState(false);
 
-  const cupsFor = (rs: Ruleset) => {
-    const j = judgeLateness(addMinutes(rs.defaultStartTime, PREVIEW_MINUTES), rs.defaultStartTime, rs.graceMinutes);
-    return computeCups(j, rs.cupRule);
+  const schedule = (rs: Ruleset) => {
+    const steps = lateSchedule(rs);
+    return steps.length === 0 ? t('settings.previewNone') : steps.map((st) => t('settings.previewStep', st)).join(', ');
   };
+  const before = schedule(saved);
+  const after = schedule(draft);
   const tiers: CupTier[] =
     draft.cupRule.mode === 'tiered'
       ? draft.cupRule.tiers
@@ -172,12 +184,14 @@ function RulesEditor() {
         {dirty && (
           <div className="cm-preview is-late" role="status">
             <div className="cm-preview-main">
-              {t('settings.preview', {
-                start: draft.defaultStartTime,
-                minutes: PREVIEW_MINUTES,
-                before: cupsFor(saved),
-                after: cupsFor(draft),
-              })}
+              {before === after ? (
+                t('settings.previewSame', { schedule: after })
+              ) : (
+                <>
+                  <div>{t('settings.previewAfter', { schedule: after })}</div>
+                  <div className="cm-preview-before">{t('settings.previewBefore', { schedule: before })}</div>
+                </>
+              )}
             </div>
             <div className="cm-preview-basis">{t('settings.notRetroactive')}</div>
           </div>

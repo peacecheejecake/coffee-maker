@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { CheckInButton } from '../src/Attendance';
 import { LedgerProvider } from '../src/context';
 import { RecordSheet } from '../src/RecordSheet';
-import { TierEditor } from '../src/SettingsSheet';
+import { lateSchedule, TierEditor } from '../src/SettingsSheet';
 import { LedgerSheet } from '../src/LedgerSheet';
 import type { CupTier } from '@coffee/core';
 
@@ -192,5 +192,22 @@ describe('attendance mode', () => {
     await user.click(screen.getByRole('button', { name: '수정' }));
     expect(Object.values(store.getState().ledger.motions)[0]?.status).toBe('approved');
     expect(store.getState().ledger.towers[asPlayerId('B')]?.cups).toHaveLength(1);
+  });
+});
+
+describe('rule preview', () => {
+  it('lists when each cup count starts, after the grace minutes', async () => {
+    const store = await makeStore();
+    const rs = store.getState().ledger.rulesets.at(-1)!.ruleset;
+    const base = { ...rs, defaultStartTime: '08:30', graceMinutes: 1 };
+    expect(lateSchedule({ ...base, cupRule: { mode: 'fixed', cups: 1 } })).toEqual([{ at: '08:32', cups: 1 }]);
+    const tiers = [
+      { upToMinutes: 15, cups: 1 },
+      { upToMinutes: null, cups: 2 },
+    ];
+    expect(lateSchedule({ ...base, cupRule: { mode: 'tiered', tiers } })).toEqual([
+      { at: '08:32', cups: 1 },
+      { at: '08:46', cups: 2 },
+    ]);
   });
 });
