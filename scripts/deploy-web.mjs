@@ -2,12 +2,13 @@
 /**
  * Builds the web app and deploys it to Vercel as a prebuilt static site (Build Output API v3), so Vercel never
  * has to install this pnpm workspace itself. Production env comes from apps/web/.env.production.local, which
- * Vite loads for `vite build`.
+ * Vite loads for `vite build` (in CI, from VITE_* variables instead; see the deploy job in .github/workflows/ci.yml).
  *
  *   node scripts/deploy-web.mjs           # preview deployment
  *   node scripts/deploy-web.mjs --prod    # production
  *
- * The first run asks which Vercel project to link (stored in .vercel/, gitignored).
+ * The first run asks which Vercel project to link (stored in .vercel/, gitignored). CI passes VERCEL_TOKEN,
+ * VERCEL_ORG_ID and VERCEL_PROJECT_ID instead.
  */
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
