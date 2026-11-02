@@ -110,6 +110,9 @@ pnpm supabase db push
 pnpm deploy:web                           # 로컬에서 빌드해 Vercel에 prebuilt 정적 사이트로 배포(--prod)
 ```
 
+배포는 이 스크립트로만 합니다. Vercel의 Git 연동 빌드는 `vercel.json`에서 꺼 두었습니다. 켜 두면 `main`에 푸시할
+때마다 빈 빌드가 프로덕션을 덮어써 사이트 전체가 404가 됩니다.
+
 웹 푸시까지 쓰려면 위 "알림"의 함수 배포·시크릿·`notify_config`도 실행합니다.
 
 ### 네이티브 앱 (Capacitor)
