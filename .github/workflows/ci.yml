@@ -66,3 +66,29 @@ jobs:
         with:
           name: visual-diffs
           path: apps/web/test-results
+
+  # main only, once every check above passed: the same prebuilt deploy as `pnpm deploy:web` (vercel.json keeps
+  # Vercel's own Git builds off). Database migrations are still pushed by hand.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [check, integration, visual]
+    # One at a time, in push order; a deploy already running is never cut off.
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm deploy:web
