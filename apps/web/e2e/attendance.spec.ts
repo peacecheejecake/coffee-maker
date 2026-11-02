@@ -3,6 +3,8 @@ import { createGroup, trackErrors } from './helpers';
 
 test('attendance mode: the owner confirms the first rules; alone, later changes need no vote', async ({ page }) => {
   const errors = trackErrors(page);
+  // The calendar opens on the current month; pin the clock so the October days below exist.
+  await page.clock.install({ time: new Date('2026-10-23T01:00:00Z') });
   await createGroup(page, '지원', 'attendance');
   await expect(page.getByRole('button', { name: /규정 확정 대기/ })).toBeDisabled();
 

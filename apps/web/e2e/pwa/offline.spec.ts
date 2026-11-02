@@ -13,6 +13,8 @@ test('installable and works offline after the first visit', async ({ page, conte
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
 
   await page.getByLabel('내 이름').fill('지원');
+  // New groups default to attendance mode; the record button below is the shared-ledger one.
+  await page.getByRole('radio', { name: '공동 장부' }).click();
   await page.getByRole('button', { name: '관할 구역 개설' }).click();
   await expect(page.getByRole('button', { name: /업보 청구/ })).toBeVisible({ timeout: 15_000 });
 
