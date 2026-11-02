@@ -22,7 +22,12 @@ export type DomainErrorCode =
   | 'RulesNotAdopted'
   | 'AlreadyAdopted'
   | 'AlreadyCheckedIn'
-  | 'NotAWorkday';
+  | 'NotAWorkday'
+  /** The rules set a workplace and this check-in came without a position. */
+  | 'LocationRequired'
+  | 'OutsideWorkplace'
+  /** The position is too vague to tell (see `checkPlace`). */
+  | 'LocationUncertain';
 
 export interface DomainError {
   code: DomainErrorCode;

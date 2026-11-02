@@ -1,5 +1,4 @@
 import { domainError, type DomainError } from './errors';
-import { isWorkdayFor } from './calendar';
 import {
   CURRENT_SCHEMA_VERSION,
   missedEventId,
@@ -12,6 +11,7 @@ import {
   type StampQuality,
   type Vote,
 } from './events';
+import { checkPlace, isGeoFix, type GeoFix } from './geo';
 import { asEventId, asPlayerId, type EventId, type GroupId, type PlayerId } from './ids';
 import { computeCups, judgeLateness } from './judge';
 import type { Player, PlayerAppearance, PlayerPatch, PlayerRole } from './player';
@@ -22,7 +22,7 @@ import { validateRuleset, type Ruleset } from './ruleset';
 import {
   activePlayers,
   attendanceInForce,
-  attendanceOn,
+  checkInBlocker,
   currentRuleset,
   missedDays,
   motionsOpen,
@@ -84,7 +84,8 @@ export type Command =
   | { type: 'ChangeMode'; mode: GroupMode }
   | { type: 'TransferOwner'; to: PlayerId }
   | { type: 'AdoptRules'; ruleset: Ruleset }
-  | { type: 'CheckIn' }
+  /** `position` is required when the rules set a workplace; it is checked, never stored. */
+  | { type: 'CheckIn'; position?: GeoFix }
   /** Records every work day that ended without a check-in (any member may do this). */
   | { type: 'SettleAttendance' }
   | { type: 'SetHoliday'; date: WorkDate; name: string; off: boolean }
@@ -159,7 +160,7 @@ export function decide(state: LedgerState, cmd: Command, ctx: DecideContext): De
     case 'AdoptRules':
       return adoptRules(state, cmd, actor, make);
     case 'CheckIn':
-      return checkIn(state, ctx, make);
+      return checkIn(state, cmd, ctx, make);
     case 'SettleAttendance':
       return settle(state, ctx, make);
     case 'SetHoliday':
@@ -477,14 +478,29 @@ function adoptRules(s: LedgerState, cmd: Cmd<'AdoptRules'>, actor: Player, make:
   return emit(make({ type: 'RulesAdopted', ruleset: cmd.ruleset }));
 }
 
-function checkIn(s: LedgerState, ctx: DecideContext, make: Make): Decision {
-  if (s.mode !== 'attendance') return fail('WrongMode', 'Check-ins are for attendance mode');
-  const { startsOn } = s.attendance;
-  if (!startsOn) return fail('RulesNotAdopted', 'The rules have not been confirmed yet');
-  if (ctx.today < startsOn) return fail('RulesNotAdopted', `Attendance starts on ${startsOn}`, { startsOn });
-  if (attendanceOn(s, ctx.actorId, ctx.today)) return fail('AlreadyCheckedIn', 'Already settled for today');
-  if (!isWorkdayFor(s, rulesetAt(s, ctx.today), ctx.actorId, ctx.today)) {
-    return fail('NotAWorkday', 'No check-in needed today');
+function checkIn(s: LedgerState, cmd: Cmd<'CheckIn'>, ctx: DecideContext, make: Make): Decision {
+  switch (checkInBlocker(s, ctx.actorId, ctx.today)) {
+    case 'wrongMode':
+      return fail('WrongMode', 'Check-ins are for attendance mode');
+    case 'notAdopted':
+      return fail('RulesNotAdopted', 'The rules have not been confirmed yet');
+    case 'notStarted':
+      return fail('RulesNotAdopted', `Attendance starts on ${s.attendance.startsOn}`, { startsOn: s.attendance.startsOn });
+    case 'checkedIn':
+    case 'missed':
+      return fail('AlreadyCheckedIn', 'Already settled for today');
+    case 'dayOff':
+      return fail('NotAWorkday', 'No check-in needed today');
+    case null:
+      break;
+  }
+  // The position is checked here and then dropped: it is the device's word, and the server keeps no trail of it.
+  const { workplace } = rulesetAt(s, ctx.today);
+  if (workplace) {
+    if (!isGeoFix(cmd.position)) return fail('LocationRequired', 'Check-ins need a position inside the workplace');
+    const place = checkPlace(workplace, cmd.position);
+    if (place.kind === 'uncertain') return fail('LocationUncertain', 'The position is too vague', { ...place });
+    if (place.kind === 'outside') return fail('OutsideWorkplace', 'Not inside the workplace', { ...place });
   }
   return emit(make({ type: 'CheckedIn', workDate: ctx.today }));
 }

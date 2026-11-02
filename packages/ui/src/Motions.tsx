@@ -23,6 +23,8 @@ const rulesetSummary = (rs: Ruleset): string =>
       ? `☕×${rs.cupRule.cups}`
       : rs.cupRule.tiers.map((tier) => `${tier.upToMinutes ?? '∞'}′:${tier.cups}`).join(' '),
     `${rs.waivePolicy.ttlHours}h`,
+    // Coordinates mean little to voters; the label (or the radius alone) is what they recognize.
+    rs.workplace ? `📍${rs.workplace.label ? `${rs.workplace.label} ` : ''}${rs.workplace.radiusMeters}m` : '📍–',
   ].join(' · ');
 
 export function motionTitle(t: Translate, s: LedgerState, m: Motion): string {

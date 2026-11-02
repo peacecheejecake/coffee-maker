@@ -1,4 +1,4 @@
-import { createLocalIdbStores, createSupabaseAssets, createSupabaseRemote } from '@coffee/adapters';
+import { createBrowserGeolocation, createLocalIdbStores, createSupabaseAssets, createSupabaseRemote } from '@coffee/adapters';
 import { createLedgerStore, startSync } from '@coffee/app';
 import { LedgerProvider, webPlatform } from '@coffee/ui';
 import { StrictMode } from 'react';
@@ -19,6 +19,7 @@ const store = createLedgerStore({
   // Shared groups keep evidence photos on the server so every member can see them.
   assets: remote ? createSupabaseAssets(remote.client) : local.assets,
   push: remote ? (isNative() ? createNativePush() : createBrowserPush(config.vapidPublicKey)) : null,
+  geolocation: createBrowserGeolocation(),
 });
 void store
   .getState()

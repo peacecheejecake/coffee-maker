@@ -172,6 +172,22 @@ export const attendanceInForce = (s: LedgerState): boolean => s.mode === 'attend
 export const attendanceOn = (s: LedgerState, playerId: PlayerId, date: WorkDate): 'checkIn' | 'missed' | undefined =>
   s.attendance.days[attendanceKey(playerId, date)];
 
+/** Why a player cannot check in on a date, regardless of where they are. */
+export type CheckInBlocker = 'wrongMode' | 'notAdopted' | 'notStarted' | 'checkedIn' | 'missed' | 'dayOff';
+
+/** What stops `playerId` from checking in on `date` apart from location, or null when nothing does. */
+export function checkInBlocker(s: LedgerState, playerId: PlayerId, date: WorkDate): CheckInBlocker | null {
+  if (s.mode !== 'attendance') return 'wrongMode';
+  const { startsOn } = s.attendance;
+  if (!startsOn) return 'notAdopted';
+  if (date < startsOn) return 'notStarted';
+  const settled = attendanceOn(s, playerId, date);
+  if (settled === 'checkIn') return 'checkedIn';
+  if (settled === 'missed') return 'missed';
+  if (!isWorkdayFor(s, rulesetAt(s, date), playerId, date)) return 'dayOff';
+  return null;
+}
+
 /** How far back a device settles missed days; older gaps are left alone. */
 export const SETTLE_LOOKBACK_DAYS = 62;
 const SETTLE_AFTER = '00:05';

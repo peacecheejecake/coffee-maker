@@ -1,4 +1,4 @@
-import type { GroupId, LedgerEvent, PlayerId } from '@coffee/core';
+import type { GeoFix, GroupId, LedgerEvent, PlayerId } from '@coffee/core';
 
 /** Device-local event log, per group. Implementations: in-memory (tests), IndexedDB (web). */
 export interface EventStore {
@@ -109,6 +109,19 @@ export interface Clock {
 }
 
 export const systemClock: Clock = { now: () => new Date() };
+
+export type LocateFailure = 'denied' | 'unavailable' | 'timeout' | 'unsupported';
+export type LocateResult = { ok: true; fix: GeoFix } | { ok: false; reason: LocateFailure };
+
+/**
+ * One foreground position reading (the browser Geolocation API, also inside the native shell's web view).
+ * Nothing here runs in the background: see docs/DESIGN.md §2.7 for why there is no geofencing.
+ */
+export interface GeolocationPort {
+  supported(): boolean;
+  /** A fresh-enough reading; the first call may show the permission prompt. Never rejects. */
+  current(): Promise<LocateResult>;
+}
 
 /** Evidence photos for redemptions (receipts, the coffee itself). */
 export interface AssetStore {

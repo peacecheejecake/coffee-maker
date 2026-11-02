@@ -1353,3 +1353,42 @@ input[type='color'] {
 .cm-tv-cups {
   font-variant-numeric: tabular-nums;
 }
+
+/* ── Workplace (출두 구역) ───────────────────────────────── */
+
+.cm-map {
+  height: 260px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--cm-border);
+  /* Leaflet panes use z-index 400+; keep them under the sheet header. */
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
+}
+
+.cm-map-loading {
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+}
+
+.cm-place-hits {
+  gap: 4px;
+}
+
+.cm-place-hit {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+  white-space: normal;
+  height: auto;
+  padding: 8px 12px;
+}
+
+.cm-button-round {
+  padding: 0;
+  width: 52px;
+}
