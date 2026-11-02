@@ -198,15 +198,22 @@ describe.skipIf(!URL || !ANON)('supabase schema', () => {
     const ready = new Promise<void>((r) => (subscribed = r));
     const stop = b.subscribe(groupId, (e) => received.push(...e), (s) => s === 'subscribed' && subscribed());
     await ready;
-    const late = ev(groupId, pa, { type: 'LateRecorded', playerId: pb });
-    await a.push([late]);
-    const arrived = () => received.find((e) => e.id === late.id);
-    // Realtime delivery can take a few seconds on a busy local stack, and the first change-feed
-    // subscription after a fresh `supabase start` takes longer still (the app's pull-on-subscribe covers that gap).
-    for (let i = 0; i < 250 && !arrived(); i++) await new Promise((r) => setTimeout(r, 100));
+    // "subscribed" can come from the 2s grace period before the change feed is live (the first feed after a
+    // fresh `supabase start` is slow), and an insert in that gap is missed; the app's pull-on-subscribe covers
+    // it. So keep inserting until one is delivered live.
+    const pushed = new Set<string>();
+    const arrived = () => received.find((e) => pushed.has(e.id));
+    for (let i = 0; i < 250 && !arrived(); i++) {
+      if (i % 30 === 0) {
+        const late = ev(groupId, pa, { type: 'LateRecorded', playerId: pb });
+        pushed.add(late.id);
+        await a.push([late]);
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
     stop();
     // Earlier inserts may be delivered too; the store merges by id, so only arrival matters.
-    expect(arrived()).toMatchObject({ id: late.id, seq: expect.any(Number), serverAt: expect.any(String) });
+    expect(arrived()).toMatchObject({ seq: expect.any(Number), serverAt: expect.any(String) });
     expect(received.every((e) => e.groupId === groupId)).toBe(true);
   }, 35_000);
 
