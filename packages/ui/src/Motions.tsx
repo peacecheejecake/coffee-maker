@@ -1,4 +1,5 @@
 import {
+  isPolygonArea,
   isSoloMember,
   MAX_CUPS_PER_RECORD,
   motionStatus,
@@ -15,7 +16,7 @@ import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
 import { formatWorkDate } from './format';
 import { Field, Stepper } from './primitives';
 
-const rulesetSummary = (rs: Ruleset): string =>
+const rulesetSummary = (t: Translate, rs: Ruleset): string =>
   [
     rs.defaultStartTime,
     `+${rs.graceMinutes}′`,
@@ -23,15 +24,19 @@ const rulesetSummary = (rs: Ruleset): string =>
       ? `☕×${rs.cupRule.cups}`
       : rs.cupRule.tiers.map((tier) => `${tier.upToMinutes ?? '∞'}′:${tier.cups}`).join(' '),
     `${rs.waivePolicy.ttlHours}h`,
-    // Coordinates mean little to voters; the label (or the radius alone) is what they recognize.
-    rs.workplace ? `📍${rs.workplace.label ? `${rs.workplace.label} ` : ''}${rs.workplace.radiusMeters}m` : '📍–',
+    // Coordinates mean little to voters; the label and the size (radius, or vertex count) are what they recognize.
+    rs.workplace
+      ? `📍${rs.workplace.label ? `${rs.workplace.label} ` : ''}${
+          isPolygonArea(rs.workplace) ? t('workplace.polygonShort', { count: rs.workplace.points.length }) : `${rs.workplace.radiusMeters}m`
+        }`
+      : '📍–',
   ].join(' · ');
 
 export function motionTitle(t: Translate, s: LedgerState, m: Motion): string {
   const name = (id: PlayerId) => s.players[id]?.name ?? '?';
   switch (m.kind) {
     case 'ruleset':
-      return t('motion.ruleset', { summary: rulesetSummary(m.ruleset) });
+      return t('motion.ruleset', { summary: rulesetSummary(t, m.ruleset) });
     case 'holiday':
       return m.off
         ? t('motion.holiday', { date: formatWorkDate(m.date), name: m.name })

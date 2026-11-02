@@ -1,23 +1,50 @@
 import { createFakeGeolocation, createLedgerStore, createMemoryStores, type LedgerStore } from '@coffee/app';
-import type { Workplace } from '@coffee/core';
+import { DEFAULT_RULESET, polygonCenter, type PolygonArea, type Workplace } from '@coffee/core';
+import { createTranslator } from '@coffee/theme';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CheckInButton, useWorkplaceWatch } from '../src/Attendance';
+import { motionTitle } from '../src/Motions';
+import { insertVertex, removeVertex } from '../src/polygonEdit';
 import { LedgerProvider } from '../src/context';
 import { SettingsSheet } from '../src/SettingsSheet';
 import { Toasts } from '../src/Toasts';
 import type { WorkplaceMapProps } from '../src/WorkplaceMap';
 import { WorkplaceSheet } from '../src/WorkplaceSheet';
 
-// jsdom cannot run Leaflet; the stand-in shows the center and taps a fixed spot.
-vi.mock('../src/WorkplaceMap', () => ({
-  WorkplaceMap: ({ center, onPick, label }: WorkplaceMapProps) => (
-    <button type="button" aria-label={label} onClick={() => onPick({ lat: 37.5, lng: 127.0000004 })}>
-      {center ? `${center.lat},${center.lng}` : 'none'}
-    </button>
-  ),
-}));
+// jsdom cannot run Leaflet. The stand-in shows the area, taps a fixed spot, and offers what the real editor's
+// gestures do: tap a vertex, tap an edge's "+" handle, and (for the test) drag two vertices past each other.
+vi.mock('../src/WorkplaceMap', async () => {
+  const { insertVertex } = await import('../src/polygonEdit');
+  return {
+    WorkplaceMap: ({ area, onPick, onPointsChange, onSelect, labels }: WorkplaceMapProps) => (
+      <div>
+        <button type="button" aria-label={labels.map} onClick={() => onPick({ lat: 37.5, lng: 127.0000004 })}>
+          {!area ? 'none' : area.kind === 'circle' ? `${area.center.lat},${area.center.lng}` : `polygon:${area.points.length}`}
+        </button>
+        {area?.kind === 'polygon' && (
+          <>
+            {area.points.map((_, i) => (
+              <button key={i} type="button" onClick={() => onSelect(i)}>
+                {labels.vertex(i + 1)}
+              </button>
+            ))}
+            <button type="button" onClick={() => onPointsChange(insertVertex(area.points, 0))}>
+              {labels.insert}
+            </button>
+            <button
+              type="button"
+              onClick={() => onPointsChange([area.points[0]!, area.points[2]!, area.points[1]!, ...area.points.slice(3)])}
+            >
+              stub:cross
+            </button>
+          </>
+        )}
+      </div>
+    ),
+  };
+});
 
 afterEach(cleanup);
 
@@ -103,6 +130,103 @@ describe('workplace picker', () => {
   });
 });
 
+describe('polygon workplace', () => {
+  it('switches from the circle to a hexagon around it, then edits vertices', async () => {
+    const { store } = await setup({ adopt: false });
+    const onApply = vi.fn();
+    const search = vi.fn(async () => [{ name: '서울역', lat: 37.5547, lng: 126.9707 }]);
+    const user = userEvent.setup();
+    renderWith(store, <WorkplaceSheet open onOpenChange={() => {}} value={OFFICE} onApply={onApply} search={search} />);
+    const dialog = screen.getByRole('dialog', { name: '출두 구역 설정' });
+    const map = await within(dialog).findByRole('button', { name: '구역 지도' });
+    await user.click(within(dialog).getByRole('radio', { name: '다각형' }));
+    expect(map.textContent).toBe('polygon:6');
+    expect(within(dialog).queryByRole('group', { name: '반경 (m)' })).toBeNull();
+
+    // Select a vertex, then delete it; an edge's "+" adds one back.
+    const remove = within(dialog).getByRole('button', { name: '꼭짓점을 골라 삭제' });
+    expect(remove.hasAttribute('disabled')).toBe(true);
+    await user.click(within(dialog).getByRole('button', { name: '꼭짓점 2' }));
+    await user.click(within(dialog).getByRole('button', { name: '꼭짓점 2 삭제' }));
+    expect(map.textContent).toBe('polygon:5');
+    await user.click(within(dialog).getByRole('button', { name: '꼭짓점 추가' }));
+    expect(map.textContent).toBe('polygon:6');
+
+    // Never fewer than three.
+    for (let i = 0; i < 3; i++) {
+      await user.click(within(dialog).getByRole('button', { name: '꼭짓점 1' }));
+      await user.click(within(dialog).getByRole('button', { name: '꼭짓점 1 삭제' }));
+    }
+    expect(map.textContent).toBe('polygon:3');
+    await user.click(within(dialog).getByRole('button', { name: '꼭짓점 1' }));
+    expect(within(dialog).getByRole('button', { name: '꼭짓점 1 삭제' }).hasAttribute('disabled')).toBe(true);
+
+    // A search moves the whole shape there.
+    await user.type(within(dialog).getByRole('searchbox', { name: '장소 검색' }), '서울역');
+    await user.click(within(dialog).getByRole('button', { name: '장소 검색' }));
+    await user.click(await within(dialog).findByRole('button', { name: '서울역' }));
+    await user.click(within(dialog).getByRole('button', { name: '이 구역으로' }));
+    const applied = onApply.mock.calls[0]![0] as PolygonArea;
+    expect(applied).toMatchObject({ kind: 'polygon', label: '본사' });
+    expect(applied.points).toHaveLength(3);
+    expect(polygonCenter(applied.points).lat).toBeCloseTo(37.5547, 4);
+    expect(polygonCenter(applied.points).lng).toBeCloseTo(126.9707, 4);
+  });
+
+  it('refuses crossed edges until they are fixed', async () => {
+    const { store } = await setup({ adopt: false });
+    const user = userEvent.setup();
+    const square: PolygonArea = {
+      kind: 'polygon',
+      points: [
+        { lat: 37.5665, lng: 126.978 },
+        { lat: 37.5675, lng: 126.978 },
+        { lat: 37.5675, lng: 126.979 },
+        { lat: 37.5665, lng: 126.979 },
+      ],
+    };
+    renderWith(store, <WorkplaceSheet open onOpenChange={() => {}} value={square} onApply={() => {}} />);
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByRole('radio', { name: '다각형' }).getAttribute('aria-checked')).toBe('true');
+    await user.click(await within(dialog).findByRole('button', { name: 'stub:cross' }));
+    expect(within(dialog).getByRole('alert').textContent).toContain('변이 서로 교차합니다');
+    expect(within(dialog).getByRole('button', { name: '이 구역으로' }).hasAttribute('disabled')).toBe(true);
+    await user.click(within(dialog).getByRole('button', { name: 'stub:cross' }));
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+  });
+
+  it('going back to a circle keeps the place and roughly the size', async () => {
+    const { store } = await setup({ adopt: false });
+    const onApply = vi.fn();
+    const user = userEvent.setup();
+    renderWith(store, <WorkplaceSheet open onOpenChange={() => {}} value={OFFICE} onApply={onApply} />);
+    const dialog = screen.getByRole('dialog');
+    await within(dialog).findByRole('button', { name: '구역 지도' });
+    await user.click(within(dialog).getByRole('radio', { name: '다각형' }));
+    await user.click(within(dialog).getByRole('radio', { name: '원' }));
+    await user.click(within(dialog).getByRole('button', { name: '이 구역으로' }));
+    expect(onApply).toHaveBeenCalledWith({ lat: 37.5665, lng: 126.978, radiusMeters: 150, label: '본사' });
+  });
+
+  it('vertex edits stay within 3–20 points', () => {
+    let pts = Array.from({ length: 20 }, (_, i) => ({ lat: i, lng: i }));
+    expect(insertVertex(pts, 0)).toHaveLength(20);
+    pts = pts.slice(0, 3);
+    expect(insertVertex(pts, 2)[3]).toEqual({ lat: 1, lng: 1 }); // the closing edge's midpoint
+    expect(removeVertex(pts, 0)).toHaveLength(3);
+  });
+
+  it('summaries name the shape instead of coordinates', async () => {
+    const { store } = await setup({ adopt: false });
+    const t = createTranslator('underworld');
+    const hexagon: PolygonArea = { kind: 'polygon', label: '별관', points: Array.from({ length: 6 }, () => OFFICE) };
+    const title = motionTitle(t, store.getState().ledger, { kind: 'ruleset', ruleset: { ...DEFAULT_RULESET, workplace: hexagon } });
+    expect(title).toContain('📍별관 6각형');
+    const circle = motionTitle(t, store.getState().ledger, { kind: 'ruleset', ruleset: { ...DEFAULT_RULESET, workplace: OFFICE } });
+    expect(circle).toContain('📍본사 150m');
+  });
+});
+
 describe('check-in inside the workplace', () => {
   function Watched() {
     useWorkplaceWatch();
@@ -119,7 +243,7 @@ describe('check-in inside the workplace', () => {
     geo.next = AWAY;
     const user = userEvent.setup();
     renderWith(store, <Watched />);
-    const button = await screen.findByRole('button', { name: /출두 구역 밖 \(1\.6km\)/ });
+    const button = await screen.findByRole('button', { name: /출두 구역 밖 \(1\.5km\)/ });
     expect(button.hasAttribute('disabled')).toBe(true);
 
     geo.next = INSIDE;

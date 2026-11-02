@@ -37,7 +37,7 @@ export function useWorkplaceWatch() {
   const today = useLedger((s) => s.wallNow)().workDate;
   const workplace = useLedger((s) => s.workplaceToday)();
   const due = !!me && !!workplace && api.supportsLocation && checkInBlocker(ledger, me, today) === null;
-  const key = workplace ? `${workplace.lat},${workplace.lng},${workplace.radiusMeters}` : '';
+  const key = JSON.stringify(workplace ?? null);
   const announce = useCheckInToast(true);
 
   useEffect(() => {

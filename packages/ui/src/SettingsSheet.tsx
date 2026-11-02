@@ -2,6 +2,7 @@ import {
   activePlayers,
   computeCups,
   currentRuleset,
+  isPolygonArea,
   isSoloMember,
   judgeLateness,
   RULESET_LIMITS,
@@ -252,9 +253,11 @@ function WorkplaceField({ value, changed, onEdit }: { value: Workplace | undefin
       <div className="cm-row cm-wrap">
         <span>
           📍{' '}
-          {value
-            ? t('workplace.summary', { label: value.label ?? t('workplace.unnamed'), radius: value.radiusMeters })
-            : t('workplace.none')}
+          {!value
+            ? t('workplace.none')
+            : isPolygonArea(value)
+              ? t('workplace.summaryPolygon', { label: value.label ?? t('workplace.unnamed'), count: value.points.length })
+              : t('workplace.summary', { label: value.label ?? t('workplace.unnamed'), radius: value.radiusMeters })}
         </span>
         <button type="button" className="cm-button" onClick={onEdit}>
           {t('workplace.edit')}

@@ -1,22 +1,48 @@
-import { DEFAULT_WORKPLACE_RADIUS, WORKPLACE_LIMITS, type Workplace } from '@coffee/core';
-import { Component, lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  areaCenter,
+  areaRadius,
+  DEFAULT_WORKPLACE_RADIUS,
+  isPolygonArea,
+  movePolygon,
+  regularPolygon,
+  workplaceIssues,
+  WORKPLACE_LIMITS,
+  type LatLng,
+  type Workplace,
+} from '@coffee/core';
+import type { MessageKey } from '@coffee/theme';
+import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useStoreApi, useT } from './context';
 import { nominatimSearch, type PlaceHit, type PlaceSearch } from './placeSearch';
-import { Field, Sheet, Stepper } from './primitives';
-import type { LatLng } from './WorkplaceMap';
+import { canRemoveVertex, removeVertex, roundLatLng } from './polygonEdit';
+import { Field, Segmented, Sheet, Stepper } from './primitives';
+import type { MapArea } from './WorkplaceMap';
 
 const WorkplaceMap = lazy(() => import('./WorkplaceMap').then((m) => ({ default: m.WorkplaceMap })));
 
 /** Where the map opens when there is neither a workplace nor a position: Seoul City Hall. */
 const FALLBACK: LatLng = { lat: 37.5665, lng: 126.978 };
+/** A circle turned into a polygon starts as a hexagon of the same size: few enough handles to drag on a phone. */
+const START_SIDES = 6;
 
-/** ~10 cm: more digits are noise, and the ruleset is shown to (and voted on by) everyone. */
-const round = (v: number) => Math.round(v * 1e6) / 1e6;
+type Shape = 'circle' | 'polygon';
+
+/** Polygon validation messages, worded for people (the paths come from `workplaceIssues`). */
+const POLYGON_ISSUE: Record<string, MessageKey> = {
+  'edges cross': 'workplace.issue.cross',
+  'too large': 'workplace.issue.large',
+  'too small': 'workplace.issue.small',
+};
+
+const clampRadius = (m: number) => {
+  const { min, max } = WORKPLACE_LIMITS.radiusMeters;
+  return Math.min(max, Math.max(min, Math.round(m / 50) * 50));
+};
 
 /**
- * The workplace picker (출두 구역 설정). Opens on the current workplace, or on the device's position the first time;
- * the center can also be moved by tapping the map or searching. Only edits a draft: the rules editor adopts or
- * proposes it like any other rule.
+ * The workplace picker (출두 구역 설정). Opens on the current workplace, or on the device's position the first time.
+ * A circle (center + radius) is the quick default; switching to a polygon starts from a hexagon around it, whose
+ * vertices are then dragged on the map. Only edits a draft: the rules editor adopts or proposes it like any other rule.
  */
 export function WorkplaceSheet({
   open,
@@ -50,19 +76,40 @@ function Picker({
 }) {
   const t = useT();
   const api = useStoreApi();
-  const [center, setCenter] = useState<LatLng | null>(value ? { lat: value.lat, lng: value.lng } : null);
-  const [radius, setRadius] = useState(value?.radiusMeters ?? DEFAULT_WORKPLACE_RADIUS);
+  const [shape, setShape] = useState<Shape>(value && isPolygonArea(value) ? 'polygon' : 'circle');
+  const [center, setCenter] = useState<LatLng | null>(value ? areaCenter(value) : null);
+  const [radius, setRadius] = useState(value && !isPolygonArea(value) ? value.radiusMeters : DEFAULT_WORKPLACE_RADIUS);
+  const [points, setPoints] = useState<LatLng[]>(value && isPolygonArea(value) ? value.points : []);
+  const [selected, setSelected] = useState<number | null>(null);
   const [label, setLabel] = useState(value?.label ?? '');
   const [locating, setLocating] = useState(false);
   const [locateFailed, setLocateFailed] = useState(false);
-  const pickAt = (at: LatLng) => setCenter({ lat: round(at.lat), lng: round(at.lng) });
+
+  /** Current location, a search hit, or a tap (circle only): the area moves there, keeping its shape. */
+  const moveTo = (at: LatLng) => {
+    const to = roundLatLng(at);
+    setCenter(to);
+    if (shape === 'polygon' && points.length > 0) setPoints(movePolygon(points, to).map(roundLatLng));
+  };
+
+  const switchShape = (next: Shape) => {
+    if (next === shape) return;
+    setSelected(null);
+    if (next === 'polygon' && center) setPoints(regularPolygon(center, radius, START_SIDES).map(roundLatLng));
+    if (next === 'circle' && points.length > 0) {
+      const poly: Workplace = { kind: 'polygon', points };
+      setCenter(roundLatLng(areaCenter(poly)));
+      setRadius(clampRadius(areaRadius(poly)));
+    }
+    setShape(next);
+  };
 
   const locateHere = async () => {
     setLocating(true);
     setLocateFailed(false);
     const r = await api.getState().position();
     setLocating(false);
-    if (r.ok) pickAt(r.fix);
+    if (r.ok) moveTo(r.fix);
     else setLocateFailed(true);
   };
 
@@ -76,8 +123,24 @@ function Picker({
   }, []);
 
   const trimmed = label.trim();
-  const apply = () =>
-    center && onApply({ lat: center.lat, lng: center.lng, radiusMeters: radius, ...(trimmed && { label: trimmed }) });
+  const named = trimmed ? { label: trimmed } : {};
+  const draft: Workplace | null =
+    shape === 'polygon'
+      ? points.length > 0
+        ? { kind: 'polygon', points, ...named }
+        : null
+      : center && { lat: center.lat, lng: center.lng, radiusMeters: radius, ...named };
+  const issue = draft && shape === 'polygon' ? workplaceIssues(draft).find(([path]) => path.startsWith('points')) : undefined;
+  const area: MapArea | null =
+    shape === 'polygon'
+      ? points.length > 0
+        ? { kind: 'polygon', points }
+        : null
+      : center && { kind: 'circle', center, radiusMeters: radius };
+  const labels = useMemo(
+    () => ({ map: t('workplace.map'), vertex: (n: number) => t('workplace.vertex', { n }), insert: t('workplace.vertexAdd') }),
+    [t],
+  );
 
   return (
     <div className="cm-stack">
@@ -92,20 +155,63 @@ function Picker({
           {t('workplace.locateFailed')}
         </p>
       )}
-      <PlaceSearchBox search={search} onPick={(h) => pickAt(h)} />
+      <PlaceSearchBox search={search} onPick={moveTo} />
+      <Segmented<Shape>
+        label={t('workplace.shape')}
+        value={shape}
+        disabled={!center && points.length === 0}
+        options={[
+          { value: 'circle', label: t('workplace.shape.circle') },
+          { value: 'polygon', label: t('workplace.shape.polygon') },
+        ]}
+        onChange={switchShape}
+      />
       <MapBoundary fallbackText={t('workplace.mapFailed')}>
         <Suspense fallback={<div className="cm-map cm-map-loading">{t('workplace.mapLoading')}</div>}>
-          <WorkplaceMap center={center} fallback={FALLBACK} radiusMeters={radius} onPick={pickAt} label={t('workplace.map')} />
+          <WorkplaceMap
+            area={area}
+            fallback={FALLBACK}
+            onPick={moveTo}
+            onPointsChange={setPoints}
+            selected={selected}
+            onSelect={setSelected}
+            labels={labels}
+          />
         </Suspense>
       </MapBoundary>
-      <p className="cm-muted">
-        {t('workplace.mapHint')}
-        {center && <> · {t('workplace.center', { lat: center.lat.toFixed(5), lng: center.lng.toFixed(5) })}</>}
-      </p>
+      {shape === 'circle' ? (
+        <p className="cm-muted">
+          {t('workplace.mapHint')}
+          {center && <> · {t('workplace.center', { lat: center.lat.toFixed(5), lng: center.lng.toFixed(5) })}</>}
+        </p>
+      ) : (
+        <>
+          <p className="cm-muted">{t('workplace.polygonHint', { count: points.length, max: WORKPLACE_LIMITS.polygonPoints.max })}</p>
+          <button
+            type="button"
+            className="cm-button cm-button-ghost"
+            disabled={selected === null || !canRemoveVertex(points)}
+            onClick={() => {
+              if (selected === null) return;
+              setPoints(removeVertex(points, selected));
+              setSelected(null);
+            }}
+          >
+            {selected === null ? t('workplace.vertexRemove') : t('workplace.vertexRemoveN', { n: selected + 1 })}
+          </button>
+          {issue && (
+            <p className="cm-errors" role="alert">
+              {t(POLYGON_ISSUE[issue[1]] ?? 'workplace.issue.points')}
+            </p>
+          )}
+        </>
+      )}
       <div className="cm-grid2">
-        <Field label={t('workplace.radius')}>
-          <Stepper label={t('workplace.radius')} value={radius} {...WORKPLACE_LIMITS.radiusMeters} step={50} onChange={setRadius} />
-        </Field>
+        {shape === 'circle' && (
+          <Field label={t('workplace.radius')}>
+            <Stepper label={t('workplace.radius')} value={radius} {...WORKPLACE_LIMITS.radiusMeters} step={50} onChange={setRadius} />
+          </Field>
+        )}
         <Field label={t('workplace.label')}>
           <input
             className="cm-input"
@@ -117,7 +223,7 @@ function Picker({
         </Field>
       </div>
       <div className="cm-row cm-wrap">
-        <button type="button" className="cm-button cm-button-primary" disabled={!center} onClick={apply}>
+        <button type="button" className="cm-button cm-button-primary" disabled={!draft || !!issue} onClick={() => draft && onApply(draft)}>
           {t('workplace.apply')}
         </button>
         {value && (
