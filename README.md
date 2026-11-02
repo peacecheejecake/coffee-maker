@@ -102,7 +102,8 @@ pnpm supabase login && npx vercel@65.2.0 login
 pnpm supabase link --project-ref <ref>    # 대시보드에서 만든 프로젝트
 pnpm supabase db push
 # 대시보드: Authentication → Anonymous sign-ins 켜기(링크로 몰래 보기), Site URL에 Vercel 주소,
-#   Redirect URLs에 https://<도메인>/** (로그인 후 시작한 페이지로 돌아옴)
+#   Redirect URLs에 https://<도메인>/** (로그인 후 시작한 페이지로 돌아옴)과
+#   coffeemaker://auth-callback (네이티브 앱 로그인 복귀)
 # 대시보드: Authentication → Providers → Google 켜기. Google Cloud Console의 OAuth 클라이언트(웹)에
 #   승인된 리디렉션 URI로 https://<ref>.supabase.co/auth/v1/callback 등록 후 Client ID/Secret 입력
 # apps/web/.env.production.local 에 VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY (선택: VITE_VAPID_PUBLIC_KEY)
@@ -131,3 +132,8 @@ node scripts/configure-app-links.mjs --domain <도메인> --team <Apple Team ID>
 
 QA 빌드에서 특정 화면으로 바로 열려면 `VITE_NATIVE_START_PATH=/demo`로 웹을 빌드한 뒤 동기화합니다.
 딥링크: `coffeemaker://join/<초대코드>`, `coffeemaker://demo`.
+
+Google 로그인: 앱 안에서는 웹뷰를 떠나지 않고 `@capacitor/browser`(SFSafariViewController / Custom Tabs)로
+로그인 페이지를 연 뒤, Supabase가 `coffeemaker://auth-callback?code=…`로 돌려보내면 앱이 PKCE 코드를 세션으로
+교환하고 로그인을 시작한 화면으로 돌아갑니다. Supabase 대시보드 Redirect URLs에 `coffeemaker://auth-callback`이
+없으면 로그인 후 웹사이트(Site URL)로 가 버립니다.
