@@ -104,7 +104,8 @@ test('a unanimous waiver across three devices', async ({ browser }) => {
   const url = await inviteLink(a.page);
   await joinAs(b.page, url, '민수');
   await joinAs(c.page, url, '하나');
-  await expect(towerLabel(a.page, '하나', 0)).toHaveCount(1);
+  // Live, from C's device; three software-rendered scenes at once make it slow on CI.
+  await expect(towerLabel(a.page, '하나', 0)).toHaveCount(1, { timeout: 15_000 });
 
   await recordLate(a.page, '민수', '09:30');
   const ledger = await openLedger(a.page, '민수');
