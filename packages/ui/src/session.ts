@@ -1,11 +1,8 @@
 /**
  * Per-tab state that has to survive the Google sign-in redirect (a full page load): which group this tab is
- * watching as a viewer, and what the user picked on the claim screen before being sent to sign in.
+ * watching as a viewer.
  */
 const PEEK_KEY = 'coffee-maker:peek';
-const PENDING_KEY = 'coffee-maker:pending-claim';
-
-export type PendingClaim = { groupId: string; playerId: string } | { groupId: string; name: string };
 
 function read(key: string): string | null {
   try {
@@ -26,17 +23,3 @@ function write(key: string, value: string | null) {
 
 export const peekGroup = () => read(PEEK_KEY);
 export const setPeekGroup = (groupId: string | null) => write(PEEK_KEY, groupId);
-
-export function takePendingClaim(groupId: string): PendingClaim | null {
-  const raw = read(PENDING_KEY);
-  if (!raw) return null;
-  write(PENDING_KEY, null);
-  try {
-    const pending = JSON.parse(raw) as PendingClaim;
-    return pending.groupId === groupId ? pending : null;
-  } catch {
-    return null;
-  }
-}
-
-export const setPendingClaim = (pending: PendingClaim) => write(PENDING_KEY, JSON.stringify(pending));

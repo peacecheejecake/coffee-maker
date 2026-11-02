@@ -672,48 +672,26 @@ function AutoCheckInField() {
 
 function AccountSection() {
   const t = useT();
-  const { toast } = useUi();
-  const api = useStoreApi();
   const sync = useLedger((s) => s.sync);
   const account = useLedger((s) => s.account);
   const closeGroup = useLedger((s) => s.closeGroup);
   const signOut = useLedger((s) => s.signOut);
-  if (sync === 'local' || !api.remote || !account) return null;
-  const link = async (provider: 'google' | 'apple') => {
-    try {
-      await api.remote!.linkAccount(provider);
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), 'error');
-    }
-  };
+  // Settings are for members, and members are signed in with Google.
+  if (sync === 'local' || !account || account.anonymous) return null;
   return (
     <section className="cm-section" aria-labelledby="account-h">
       <h3 id="account-h">{t('settings.account')}</h3>
-      {account.anonymous ? (
-        <div className="cm-form">
-          <p className="cm-muted">{t('settings.account.anonymous')}</p>
-          <div className="cm-row cm-wrap">
-            <button type="button" className="cm-button" onClick={() => void link('google')}>
-              {t('settings.account.google')}
-            </button>
-            <button type="button" className="cm-button" onClick={() => void link('apple')}>
-              {t('settings.account.apple')}
-            </button>
-          </div>
+      <div className="cm-form">
+        <p className="cm-muted">{t('settings.account.linked', { email: account.email ?? '' })}</p>
+        <div className="cm-row cm-wrap">
+          <button type="button" className="cm-button" onClick={() => void closeGroup()}>
+            {t('settings.groups')}
+          </button>
+          <button type="button" className="cm-button cm-button-ghost" onClick={() => void signOut()}>
+            {t('account.logout')}
+          </button>
         </div>
-      ) : (
-        <div className="cm-form">
-          <p className="cm-muted">{t('settings.account.linked', { email: account.email ?? '' })}</p>
-          <div className="cm-row cm-wrap">
-            <button type="button" className="cm-button" onClick={() => void closeGroup()}>
-              {t('settings.groups')}
-            </button>
-            <button type="button" className="cm-button cm-button-ghost" onClick={() => void signOut()}>
-              {t('account.logout')}
-            </button>
-          </div>
-        </div>
-      )}
+      </div>
     </section>
   );
 }

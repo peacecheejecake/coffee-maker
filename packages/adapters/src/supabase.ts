@@ -31,8 +31,8 @@ export interface AuthRedirect {
 }
 
 /**
- * RemoteSync over Supabase (supabase/migrations): anonymous auth, RPCs for every write, RLS-guarded reads,
- * and Realtime inserts for live updates.
+ * RemoteSync over Supabase (supabase/migrations): Google sign-in (anonymous sessions only watch), RPCs for
+ * every write, RLS-guarded reads, and Realtime inserts for live updates.
  *
  * OAuth uses the PKCE flow: the redirect carries a one-time `?code=` (exchanged by supabase-js on page load
  * on the web, by `completeAuthRedirect` in the native shell) instead of tokens in the URL fragment.
@@ -202,12 +202,6 @@ export function createSupabaseRemote(
     async signOut() {
       const { error } = await client.auth.signOut();
       if (error) throw new Error(error.message);
-    },
-
-    async linkAccount(provider) {
-      // The web comes back to the start page; the native shell back to where Settings was opened.
-      const returnTo = authRedirect ? location.href : location.origin;
-      await leave(await client.auth.linkIdentity({ provider, options: redirectOptions(returnTo) }), returnTo);
     },
 
     /** Finishes a native sign-in from the deep link Supabase redirected to (`?code=…` or `?error_description=…`). */

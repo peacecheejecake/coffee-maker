@@ -71,7 +71,7 @@ export type PlaceStatus =
 export interface LedgerStoreState {
   status: 'idle' | 'loading' | 'ready' | 'error';
   groupId: GroupId | null;
-  /** Player this device acts as. With sync, the player claimed by the signed-in account. */
+  /** Player this device acts as. With sync, the player claimed by the signed-in account (null while anonymous). */
   me: PlayerId | null;
   /** Canonical order: confirmed by seq, then pending. */
   events: LedgerEvent[];
@@ -385,7 +385,7 @@ export function createLedgerStore({
           await loadGroup(groupId);
           const account = await remote.account();
           if (account) await meta.set(META.account, account.id);
-          set({ account });
+          set({ account, ...(account?.anonymous && { me: null }) });
         }),
 
       async claims() {
@@ -448,6 +448,9 @@ export function createLedgerStore({
         if (!account) return;
         const previous = await meta.get<string>(META.account);
         await meta.set(META.account, account.id);
+        // Taking part needs Google: a session left anonymous (e.g. from before that) only watches, keeping
+        // its player on the server for a signed-in account to take over.
+        if (account.anonymous) return void set({ me: null, undo: null });
         if (previous === undefined || previous === account.id) return;
         // Signed in as someone else (e.g. back from Google): who are we in the open group now?
         const { groupId, inviteCode } = get();

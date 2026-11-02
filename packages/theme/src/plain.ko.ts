@@ -14,7 +14,6 @@ export const plainKo: Messages = {
   'join.loading': '그룹에 들어가는 중…',
   'claim.title': '누구신가요?',
   'claim.body': '목록에서 이름을 고르거나 새로 등록하세요.',
-  'claim.loginHint': '참여하려면 Google 계정으로 로그인해야 합니다. 이름을 고르면 로그인 화면으로 갑니다.',
   'viewer.joinHint': '참여해야 지각을 기록할 수 있습니다',
   'groups.title': '내 그룹',
   'groups.item': '{name}의 그룹',

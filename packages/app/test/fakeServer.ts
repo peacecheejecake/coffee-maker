@@ -94,7 +94,6 @@ export class FakeServer {
       account: async () => ({ id: userId, anonymous: !server.signedIn.has(userId) }),
       signIn: async () => {},
       signOut: async () => {},
-      linkAccount: async () => {},
       subscribe(groupId, cb, onStatus: (s: RemoteStatus) => void) {
         const sub = { groupId, cb: (e: LedgerEvent[]) => net.online && cb(e) };
         server.subs.add(sub);

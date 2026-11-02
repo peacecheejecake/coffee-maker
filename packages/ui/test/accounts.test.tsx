@@ -1,9 +1,10 @@
 import { createLedgerStore, createMemoryStores, type Account, type LedgerStore, type RemoteSync } from '@coffee/app';
 import { asPlayerId, type LedgerEvent } from '@coffee/core';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from '../src/AppShell';
+import { JoinScreen } from '../src/Claim';
 import { LedgerProvider } from '../src/context';
 import { SettingsSheet } from '../src/SettingsSheet';
 
@@ -22,13 +23,16 @@ async function serverLedger(): Promise<LedgerEvent[]> {
   return local.getState().events.map((e, i) => ({ ...e, seq: i + 1, serverAt: e.at }));
 }
 
-async function viewerStore(account: Account = { id: 'viewer', anonymous: true }) {
+const GOOGLE: Account = { id: 'g', anonymous: false, email: 'g@example.test' };
+
+/** Opens the group through its invite link as `account`, which holds `playerId` there (none by default). */
+async function viewerStore(account: Account = { id: 'viewer', anonymous: true }, playerId: string | null = null) {
   const events = await serverLedger();
   const groupId = events[0]!.groupId;
   const signIn = vi.fn(async () => {});
   const remote = {
     ensureSession: async () => {},
-    viewGroup: async () => ({ groupId, member: false, playerId: null }),
+    viewGroup: async () => ({ groupId, member: playerId !== null, playerId }),
     pull: async () => events,
     claimedPlayers: async () => [
       { playerId: events[0]!.actorId, anonymous: false },
@@ -51,45 +55,64 @@ const renderApp = (store: LedgerStore) =>
     </LedgerProvider>,
   );
 
-describe('opening an invite link', () => {
-  it('asks who you are, showing every name — taken ones too', async () => {
-    const { store, signIn } = await viewerStore();
-    const user = userEvent.setup();
-    renderApp(store);
-    expect(screen.getByRole('heading', { name: '당신은 누구십니까?' })).toBeTruthy();
-    expect((await screen.findByRole('button', { name: /지원 · 참여 중/ })).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('button', { name: /하나입니다/ })).toBeTruthy();
-    // Not signed in: picking a name goes to Google first and is finished after the redirect.
-    await user.click(screen.getByRole('button', { name: /민수입니다 \(되찾기\)/ }));
-    expect(signIn).toHaveBeenCalledWith('google', location.href);
-    expect(JSON.parse(sessionStorage.getItem('coffee-maker:pending-claim')!)).toMatchObject({ playerId: 'B' });
-  });
+/** /join/:code as the app routes it: the join screen, then the app. */
+async function openLink(store: LedgerStore) {
+  const done = vi.fn();
+  render(
+    <LedgerProvider store={store}>
+      <JoinScreen code="code1234" onDone={done} />
+    </LedgerProvider>,
+  );
+  await waitFor(() => expect(done).toHaveBeenCalled());
+  cleanup();
+  renderApp(store);
+}
 
-  it('can be watched read-only, with sign-in floating over the scene', async () => {
+describe('opening an invite link', () => {
+  it('without signing in: watches read-only, with Google sign-in floating over the scene', async () => {
     const { store, signIn } = await viewerStore();
     const user = userEvent.setup();
-    renderApp(store);
-    await user.click(screen.getByRole('button', { name: '👀 몰래 보기' }));
+    await openLink(store);
     expect(screen.getByRole('region', { name: '👀 몰래 보는 중' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: '당신은 누구십니까?' })).toBeNull();
     expect(screen.queryByRole('button', { name: /업보 청구/ })).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Google로 로그인' }));
-    expect(signIn).toHaveBeenCalled();
+    expect(signIn).toHaveBeenCalledWith('google', location.href);
   });
 
-  it('offers to take part once signed in', async () => {
-    const { store } = await viewerStore({ id: 'g', anonymous: false, email: 'g@example.test' });
+  it('an anonymous session that holds a player still only watches', async () => {
+    const { store } = await viewerStore(undefined, 'B');
+    await openLink(store);
+    expect(store.getState().me).toBeNull();
+    expect(screen.getByRole('button', { name: 'Google로 로그인' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '공사 규정' })).toBeNull();
+  });
+
+  it('signed in but not a member: watches first, then picks a name — taken ones listed too', async () => {
+    const { store } = await viewerStore(GOOGLE);
     const user = userEvent.setup();
-    renderApp(store);
-    await user.click(screen.getByRole('button', { name: '👀 몰래 보기' }));
+    await openLink(store);
     await user.click(screen.getByRole('button', { name: '참여하기' }));
     expect(screen.getByRole('heading', { name: '당신은 누구십니까?' })).toBeTruthy();
+    expect((await screen.findByRole('button', { name: /지원 · 참여 중/ })).hasAttribute('disabled')).toBe(true);
+    // Held by an anonymous session: a signed-in account can take it back.
+    expect(screen.getByRole('button', { name: /민수입니다 \(되찾기\)/ }).hasAttribute('disabled')).toBe(false);
+    expect(screen.getByRole('button', { name: /하나입니다/ })).toBeTruthy();
+  });
+
+  it('a signed-in member continues as their player', async () => {
+    const { store } = await viewerStore(GOOGLE, 'B');
+    await openLink(store);
+    expect(store.getState().me).toBe('B');
+    expect(screen.queryByRole('region', { name: '👀 몰래 보는 중' })).toBeNull();
+    expect(screen.getByRole('button', { name: '공사 규정' })).toBeTruthy();
   });
 });
 
 describe('invite link', () => {
   it('shows a check next to the copy button after copying', async () => {
-    const { store } = await viewerStore();
-    store.setState({ me: asPlayerId('B'), sync: 'synced' });
+    const { store } = await viewerStore(GOOGLE, 'B');
+    store.setState({ sync: 'synced' });
     const user = userEvent.setup();
     render(
       <LedgerProvider store={store}>

@@ -19,6 +19,14 @@ export function App() {
   // Native sign-in failures (reported by the deep-link handler, outside React).
   const { toast } = useUi();
   useEffect(() => onNativeNotice((message) => toast(message, 'error')), [toast]);
+  // Web: a failed Google sign-in comes back with the reason in the query; say so instead of quietly staying out.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const failure = params.get('error_description') ?? params.get('error');
+    if (!failure) return;
+    toast(failure, 'error');
+    history.replaceState(null, '', location.pathname);
+  }, [toast]);
   const goHome = useCallback(() => {
     history.replaceState(null, '', '/');
     setPath('/');
