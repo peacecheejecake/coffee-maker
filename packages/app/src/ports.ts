@@ -49,11 +49,9 @@ export interface RemoteSync {
   /** Starts an OAuth redirect that signs in (switching accounts); the browser comes back to `returnTo`. */
   signIn(provider: 'google', returnTo: string): Promise<void>;
   signOut(): Promise<void>;
-  /** Starts an OAuth redirect that attaches a provider identity to the current (anonymous) user. */
-  linkAccount(provider: 'google' | 'apple'): Promise<void>;
 }
 
-/** Anonymous accounts vanish with the browser's data; a signed-in account can be used on any device. */
+/** Anonymous sessions only watch (and vanish with the browser's data); a signed-in account takes part from any device. */
 export interface Account {
   id: string;
   anonymous: boolean;

@@ -206,9 +206,21 @@ describe('invite links and accounts', () => {
 
   it('a member opening the link again continues as their player', async () => {
     const { server, b, code } = await twoDevices();
+    server.signedIn.add('userB');
     const again = device(server, 'userB');
     await again.store.getState().openInvite(code);
     expect(again.store.getState().me).toBe(meOf(b));
+  });
+
+  it('an anonymous session only watches, even where it holds a player', async () => {
+    const { server, b, code } = await twoDevices();
+    const again = device(server, 'userB');
+    await again.store.getState().openInvite(code);
+    expect(again.store.getState().me).toBeNull();
+    expect((await again.store.getState().dispatch({ type: 'RecordArrival', playerId: meOf(b), arrivedAt: '09:30' })).ok).toBe(false);
+    // Same on start-up, for a device that joined before sign-in was required.
+    await b.getState().init();
+    expect(b.getState().me).toBeNull();
   });
 
   it('a signed-in account can take over a name held by an anonymous one, not by another signed-in one', async () => {

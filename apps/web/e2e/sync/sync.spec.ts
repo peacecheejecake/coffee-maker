@@ -37,6 +37,8 @@ async function inviteLink(page: Page): Promise<string> {
 
 async function joinAs(page: Page, url: string, name: string) {
   await page.goto(url);
+  // A link opens read-only; a signed-in visitor can take part from there.
+  await page.getByRole('region', { name: '👀 몰래 보는 중' }).getByRole('button', { name: '참여하기' }).click();
   await expect(page.getByRole('heading', { name: '당신은 누구십니까?' })).toBeVisible();
   await page.getByLabel('새로 등록').fill(name);
   await page.getByRole('button', { name: '새로 등록' }).click();
@@ -102,7 +104,8 @@ test('a unanimous waiver across three devices', async ({ browser }) => {
   const url = await inviteLink(a.page);
   await joinAs(b.page, url, '민수');
   await joinAs(c.page, url, '하나');
-  await expect(towerLabel(a.page, '하나', 0)).toHaveCount(1);
+  // Live, from C's device; three software-rendered scenes at once make it slow on CI.
+  await expect(towerLabel(a.page, '하나', 0)).toHaveCount(1, { timeout: 15_000 });
 
   await recordLate(a.page, '민수', '09:30');
   const ledger = await openLedger(a.page, '민수');
@@ -161,10 +164,7 @@ test('an invite link can be watched read-only, live, without signing in', async 
   const url = await inviteLink(a.page);
 
   await v.page.goto(url);
-  await expect(v.page.getByRole('heading', { name: '당신은 누구십니까?' })).toBeVisible();
-  // Names already taken are listed too, just not pickable.
-  await expect(v.page.getByRole('button', { name: /지원 · 참여 중/ })).toBeDisabled();
-  await v.page.getByRole('button', { name: '👀 몰래 보기' }).click();
+  // Not signed in: straight to watching, with Google sign-in on offer.
   const bar = v.page.getByRole('region', { name: '👀 몰래 보는 중' });
   await expect(bar.getByRole('button', { name: 'Google로 로그인' })).toBeVisible();
   await expect(v.page.getByRole('button', { name: /업보 청구/ })).toHaveCount(0);

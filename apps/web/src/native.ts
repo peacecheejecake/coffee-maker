@@ -122,7 +122,7 @@ export const isAuthCallback = (url: string) => url.startsWith(AUTH_CALLBACK_URL)
 
 /**
  * coffeemaker://auth-callback?code=… : sign in, close the in-app browser and go back to the page the sign-in
- * started from, where the pending claim (packages/ui/src/session.ts) picks up as it does after a web redirect.
+ * started from, as a web redirect would.
  */
 export async function handleAuthCallback(url: string, deps: AuthCallbackDeps) {
   const returnTo = recall(AUTH_RETURN_KEY);

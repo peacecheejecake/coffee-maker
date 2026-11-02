@@ -1,51 +1,35 @@
 import type { PlayerClaim } from '@coffee/app';
 import { activePlayers, type PlayerId } from '@coffee/core';
 import { useCallback, useEffect, useState } from 'react';
-import { useLedger, useT, useUi } from './context';
+import { useLedger, useStoreApi, useT, useUi } from './context';
 import { ColorDot } from './primitives';
-import { setPeekGroup, setPendingClaim, takePendingClaim } from './session';
+import { setPeekGroup } from './session';
 import { PALETTE_CHOICES } from './SettingsSheet';
 
 /**
- * "Who are you?" for an account that has no player in the group yet: pick a name or register a new one.
- * Taking part needs a signed-in account; without one, the choice is remembered across the Google redirect.
- * Anyone can also just watch (onPeek).
+ * "Who are you?" for a signed-in account that has no player in the group yet: pick a name (or take back one
+ * held by an anonymous session) or register a new one. It can also just watch (onPeek).
  */
 export function ClaimScreen({ onPeek }: { onPeek: () => void }) {
   const t = useT();
   const { toast } = useUi();
   const ledger = useLedger((s) => s.ledger);
   const groupId = useLedger((s) => s.groupId);
-  const account = useLedger((s) => s.account);
   const claims = useLedger((s) => s.claims);
   const claim = useLedger((s) => s.claim);
   const registerSelf = useLedger((s) => s.registerSelf);
-  const signIn = useLedger((s) => s.signIn);
   const [held, setHeld] = useState<PlayerClaim[] | null>(null);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
-  const signedIn = !!account && !account.anonymous;
 
   const refresh = useCallback(() => claims().then(setHeld, () => setHeld([])), [claims]);
   useEffect(() => {
     void refresh();
   }, [refresh, ledger.playerOrder.length]);
 
-  const login = useCallback(async () => {
-    try {
-      await signIn(location.href);
-    } catch (e) {
-      toast(e instanceof Error ? e.message : String(e), 'error');
-    }
-  }, [signIn, toast]);
-
   const pick = useCallback(
     async (playerId: PlayerId) => {
       if (!groupId) return;
-      if (!signedIn) {
-        setPendingClaim({ groupId, playerId });
-        return login();
-      }
       setBusy(true);
       try {
         await claim(playerId);
@@ -56,16 +40,12 @@ export function ClaimScreen({ onPeek }: { onPeek: () => void }) {
         setBusy(false);
       }
     },
-    [groupId, signedIn, login, claim, toast, t, refresh],
+    [groupId, claim, toast, t, refresh],
   );
 
   const register = useCallback(
     async (newName: string) => {
       if (!groupId) return;
-      if (!signedIn) {
-        setPendingClaim({ groupId, name: newName });
-        return login();
-      }
       setBusy(true);
       try {
         const color = PALETTE_CHOICES[ledger.playerOrder.length % PALETTE_CHOICES.length]!;
@@ -76,17 +56,8 @@ export function ClaimScreen({ onPeek }: { onPeek: () => void }) {
         setBusy(false);
       }
     },
-    [groupId, signedIn, login, ledger.playerOrder.length, registerSelf, toast],
+    [groupId, ledger.playerOrder.length, registerSelf, toast],
   );
-
-  // Back from the sign-in redirect: finish what was picked before it.
-  useEffect(() => {
-    if (!signedIn || !groupId) return;
-    const pending = takePendingClaim(groupId);
-    if (!pending) return;
-    if ('playerId' in pending) void pick(pending.playerId as PlayerId);
-    else void register(pending.name);
-  }, [signedIn, groupId, pick, register]);
 
   return (
     <main className="cm-onboarding">
@@ -127,14 +98,6 @@ export function ClaimScreen({ onPeek }: { onPeek: () => void }) {
             {t('claim.new')}
           </button>
         </form>
-        {!signedIn && (
-          <div className="cm-form">
-            <p className="cm-muted">{t('claim.loginHint')}</p>
-            <button type="button" className="cm-button" onClick={() => void login()}>
-              {t('account.login')}
-            </button>
-          </div>
-        )}
         <button type="button" className="cm-button cm-button-ghost" onClick={onPeek}>
           {t('claim.peek')}
         </button>
@@ -144,25 +107,29 @@ export function ClaimScreen({ onPeek }: { onPeek: () => void }) {
 }
 
 /**
- * Handles /join/:code: opens the group (a member continues as their player; anyone else lands on "who are
- * you?" with the option to watch), then hands back to the app.
+ * Handles /join/:code: opens the group, then hands back to the app. A signed-in member continues as their
+ * player; anyone else starts out watching, with sign-in (or, once signed in, taking part) on offer.
  */
 export function JoinScreen({ code, onDone }: { code: string; onDone: () => void }) {
   const t = useT();
+  const api = useStoreApi();
   const openInvite = useLedger((s) => s.openInvite);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    // A freshly opened link starts at "who are you?", even if this tab was watching before.
-    setPeekGroup(null);
     openInvite(code).then(
-      () => !cancelled && onDone(),
+      () => {
+        if (cancelled) return;
+        const { groupId, me } = api.getState();
+        setPeekGroup(me ? null : groupId);
+        onDone();
+      },
       () => !cancelled && setFailed(true),
     );
     return () => {
       cancelled = true;
     };
-  }, [code, openInvite, onDone]);
+  }, [code, api, openInvite, onDone]);
   return (
     <main className="cm-onboarding">
       <div className="cm-onboarding-card">

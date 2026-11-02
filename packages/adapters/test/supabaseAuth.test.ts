@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const auth = {
   signInWithOAuth: vi.fn(async (_: unknown) => ({ data: { provider: 'google', url: 'https://sb.example/authorize?x=1' }, error: null })),
-  linkIdentity: vi.fn(async (_: unknown) => ({ data: { provider: 'google', url: 'https://sb.example/identities?x=1' }, error: null })),
   exchangeCodeForSession: vi.fn(async (..._: unknown[]) => ({ data: {}, error: null as { message: string } | null })),
 };
 const createClient = vi.fn((..._: unknown[]) => ({ auth }));
@@ -14,7 +13,6 @@ const native = () => ({ callbackUrl: 'coffeemaker://auth-callback', open: vi.fn(
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal('location', { href: 'https://app.example/join/ABC?x=1', origin: 'https://app.example' });
 });
 
 describe('Supabase OAuth', () => {
@@ -27,8 +25,6 @@ describe('Supabase OAuth', () => {
     const remote = createSupabaseRemote('https://sb.example', 'anon');
     await remote.signIn('google', 'https://app.example/join/ABC');
     expect(auth.signInWithOAuth).toHaveBeenCalledWith({ provider: 'google', options: { redirectTo: 'https://app.example/join/ABC' } });
-    await remote.linkAccount('apple');
-    expect(auth.linkIdentity).toHaveBeenCalledWith({ provider: 'apple', options: { redirectTo: 'https://app.example' } });
   });
 
   it('native: opens the sign-in page itself and returns through the custom scheme', async () => {
@@ -40,13 +36,6 @@ describe('Supabase OAuth', () => {
       options: { redirectTo: 'coffeemaker://auth-callback', skipBrowserRedirect: true },
     });
     expect(redirect.open).toHaveBeenCalledWith('https://sb.example/authorize?x=1', 'capacitor://localhost/');
-
-    await remote.linkAccount('google');
-    expect(auth.linkIdentity).toHaveBeenCalledWith({
-      provider: 'google',
-      options: { redirectTo: 'coffeemaker://auth-callback', skipBrowserRedirect: true },
-    });
-    expect(redirect.open).toHaveBeenLastCalledWith('https://sb.example/identities?x=1', 'https://app.example/join/ABC?x=1');
   });
 
   it('reports OAuth start errors without opening anything', async () => {

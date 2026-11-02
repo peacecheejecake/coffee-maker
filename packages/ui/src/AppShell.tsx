@@ -45,6 +45,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
   const ledger = useLedger((s) => s.ledger);
   const nowIso = useLedger((s) => s.nowIso);
   const sync = useLedger((s) => s.sync);
+  const account = useLedger((s) => s.account);
   const [sheet, setSheet] = useState<SheetState>({ kind: 'none' });
   // Watching a group without a player of one's own (kept per tab, across the sign-in redirect).
   const [peeking, setPeeking] = useState(peekGroup);
@@ -60,7 +61,9 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
   if (status === 'error') return <div className="cm-center">{t('app.loadError', { message: loadError ?? '' })}</div>;
   if (!groupId) return <Onboarding {...(onDemo && { onDemo })} />;
   const viewer = !me;
-  if (viewer && peeking !== groupId) return <ClaimScreen onPeek={() => peek(groupId)} />;
+  // Taking part needs Google: without it the group is only watched, with sign-in on offer (ViewerBar).
+  const signedIn = !!account && !account.anonymous;
+  if (viewer && signedIn && peeking !== groupId) return <ClaimScreen onPeek={() => peek(groupId)} />;
 
   const ballots = me
     ? ballotsFor(ledger, me, nowIso()).length + motionBallotsFor(ledger, me, nowIso()).length + awaitingReceipt(ledger, me).length
