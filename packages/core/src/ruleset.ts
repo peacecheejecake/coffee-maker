@@ -1,3 +1,4 @@
+import { workplaceIssues, type Workplace } from './geo';
 import { isHHmm, isTimeZone, type HHmm } from './time';
 
 export type CupRule =
@@ -22,6 +23,8 @@ export interface Ruleset {
   timezone: string;
   /** Built-in statutory holidays that excuse check-ins. Missing in rulesets from before modes existed: 'KR'. */
   publicHolidays?: 'KR' | 'none';
+  /** Attendance mode: check-ins only count from inside this area. Absent (all older rulesets): anywhere. */
+  workplace?: Workplace;
 }
 
 export const DEFAULT_RULESET: Ruleset = {
@@ -58,6 +61,9 @@ export function validateRuleset(rs: Ruleset): RulesetIssue[] {
   if (!isTimeZone(rs.timezone)) add('timezone', 'unknown timezone');
   if (rs.publicHolidays !== undefined && rs.publicHolidays !== 'KR' && rs.publicHolidays !== 'none') {
     add('publicHolidays', 'must be KR or none');
+  }
+  if (rs.workplace !== undefined) {
+    for (const [path, message] of workplaceIssues(rs.workplace)) add(path ? `workplace.${path}` : 'workplace', message);
   }
   if (!inRange(rs.waivePolicy.ttlHours, RULESET_LIMITS.waiveTtlHours)) add('waivePolicy.ttlHours', 'out of range');
 

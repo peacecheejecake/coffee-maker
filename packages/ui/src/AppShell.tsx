@@ -1,6 +1,6 @@
 import { activePlayers, awaitingReceipt, ballotsFor, motionBallotsFor, outstanding, type EventId, type PlayerId } from '@coffee/core';
 import { useState, type ReactNode } from 'react';
-import { CheckInButton, useSettleAttendance } from './Attendance';
+import { CheckInButton, useSettleAttendance, useWorkplaceWatch } from './Attendance';
 import { BallotsSheet } from './BallotsSheet';
 import { CalendarSheet } from './CalendarSheet';
 import { useLedger, useT, useUi } from './context';
@@ -50,6 +50,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
   const [peeking, setPeeking] = useState(peekGroup);
   const close = () => setSheet({ kind: 'none' });
   useSettleAttendance();
+  useWorkplaceWatch();
   const peek = (id: string | null) => {
     setPeekGroup(id);
     setPeeking(id);

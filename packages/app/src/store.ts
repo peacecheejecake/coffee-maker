@@ -1,6 +1,8 @@
 import {
   asGroupId,
   asPlayerId,
+  checkInBlocker,
+  checkPlace,
   currentRuleset,
   decide,
   DEFAULT_RULESET,
@@ -8,11 +10,15 @@ import {
   evolve,
   missedDays,
   project,
+  rulesetAt,
   type Command,
   type Decision,
   type DomainError,
   type GroupId,
+  type GeoFix,
   type GroupMode,
+  type PlaceCheck,
+  type Workplace,
   type LedgerEvent,
   type LedgerState,
   type PlayerAppearance,
@@ -26,7 +32,10 @@ import {
   type AssetStore,
   type Clock,
   type EventStore,
+  type GeolocationPort,
   type GroupSummary,
+  type LocateFailure,
+  type LocateResult,
   type MetaStore,
   type PlayerClaim,
   type PushPort,
@@ -53,6 +62,12 @@ export interface Rejection {
   reason: string;
 }
 
+/** Where this device last found itself relative to today's workplace. Kept in memory only, never synced. */
+export type PlaceStatus =
+  | { kind: 'locating' }
+  | (PlaceCheck & { accuracyMeters: number; at: number })
+  | { kind: 'failed'; reason: LocateFailure; at: number };
+
 export interface LedgerStoreState {
   status: 'idle' | 'loading' | 'ready' | 'error';
   groupId: GroupId | null;
@@ -72,6 +87,10 @@ export interface LedgerStoreState {
   rejections: Rejection[];
   /** The signed-in (or anonymous) account; null without a remote or before the first session. */
   account: Account | null;
+  /** Null until located, and whenever today's rules set no workplace. */
+  place: PlaceStatus | null;
+  /** This device checks in by itself when the app is opened inside the workplace (per group, opt-in). */
+  autoCheckIn: boolean;
 }
 
 export interface LedgerActions {
@@ -119,6 +138,21 @@ export interface LedgerActions {
    * stale device does not charge days that others already settled. Safe to call often.
    */
   settleAttendance(): Promise<void>;
+  /** The device position as is, for picking a workplace. Not compared with anything, not kept. */
+  position(): Promise<LocateResult>;
+  /** Today's workplace in the rules, if any (attendance mode only). */
+  workplaceToday(): Workplace | undefined;
+  /** Reads the position once and compares it with today's workplace. Null when there is nothing to compare. */
+  locate(): Promise<PlaceStatus | null>;
+  /** Checks the device user in, with a fresh position when the rules set a workplace. */
+  checkIn(): Promise<Decision>;
+  /** Turning it on asks for location permission first; resolves to the resulting setting. */
+  setAutoCheckIn(on: boolean): Promise<boolean>;
+  /**
+   * Foreground auto check-in: when enabled, due today and inside the workplace, checks in. Null when nothing was
+   * attempted or the device is not inside (silently: the UI calls this on every app open).
+   */
+  tryAutoCheckIn(): Promise<Decision | null>;
 
   // ── used by the sync engine ──
   applyRemote(events: LedgerEvent[]): Promise<void>;
@@ -142,6 +176,8 @@ export type LedgerStore = StoreApi<LedgerStoreState & LedgerActions> & {
   supportsEvidence: boolean;
   /** True when this build can deliver notifications (remote + push configured + browser support). */
   supportsPush: boolean;
+  /** True when the device can report its position. */
+  supportsLocation: boolean;
   /** Makes sure a group created offline exists on the server. False for local-only groups. */
   ensureRegistered(): Promise<boolean>;
 };
@@ -155,6 +191,8 @@ export interface LedgerStoreDeps {
   assets?: AssetStore | null;
   /** Web push; only meaningful together with a remote. */
   push?: PushPort | null;
+  /** Device position, for the workplace check (attendance mode). */
+  geolocation?: GeolocationPort | null;
   clock?: Clock;
   newId?: () => string;
 }
@@ -168,9 +206,13 @@ const META = {
   /** Set once the group exists on the server (a group created offline is registered later). */
   registered: (g: GroupId) => `registered:${g}`,
   shared: (g: GroupId) => `shared:${g}`,
+  autoCheckIn: (g: GroupId) => `autoCheckIn:${g}`,
 } as const;
 
-const fail = (code: DomainError['code'], message: string): Decision => ({ ok: false, error: { code, message } });
+const fail = (code: DomainError['code'], message: string, detail?: Record<string, unknown>): Decision => ({
+  ok: false,
+  error: detail ? { code, message, detail } : { code, message },
+});
 
 export function createLedgerStore({
   events: eventStore,
@@ -178,9 +220,11 @@ export function createLedgerStore({
   remote = null,
   assets = null,
   push = null,
+  geolocation = null,
   clock = systemClock,
   newId = () => ulid(clock.now().getTime()),
 }: LedgerStoreDeps): LedgerStore {
+  let autoBusy = false;
   // Commands run strictly one after another so the log order matches the order of user actions.
   let queue: Promise<unknown> = Promise.resolve();
   const serial = <T>(task: () => Promise<T>): Promise<T> => {
@@ -229,7 +273,10 @@ export function createLedgerStore({
       const me = (await meta.get<PlayerId>(META.me(groupId))) ?? null;
       const inviteCode = (await meta.get<string>(META.invite(groupId))) ?? null;
       const shared = (await meta.get<boolean>(META.shared(groupId))) ?? false;
+      const autoCheckIn = (await meta.get<boolean>(META.autoCheckIn(groupId))) ?? false;
       set({
+        autoCheckIn,
+        place: null,
         groupId,
         me,
         events,
@@ -252,6 +299,8 @@ export function createLedgerStore({
       remoteFeed: [],
       rejections: [],
       account: null,
+      place: null,
+      autoCheckIn: false,
 
       async init() {
         set({ status: 'loading' });
@@ -389,7 +438,7 @@ export function createLedgerStore({
       closeGroup: () =>
         serial(async () => {
           await meta.set(META.group, null);
-          set({ groupId: null, me: null, events: [], ledger: emptyState(), inviteCode: null, undo: null, sync: 'local' });
+          set({ groupId: null, me: null, events: [], ledger: emptyState(), inviteCode: null, undo: null, sync: 'local', place: null });
         }),
 
       async refreshAccount() {
@@ -467,6 +516,48 @@ export function createLedgerStore({
         }
         if (missedDays(ledger, clock.now().toISOString()).length === 0) return;
         await serial(() => run({ type: 'SettleAttendance' }, me, groupId));
+      },
+
+      position: () => (geolocation ? geolocation.current() : Promise.resolve({ ok: false, reason: 'unsupported' })),
+
+      workplaceToday() {
+        const { ledger } = get();
+        if (ledger.mode !== 'attendance') return undefined;
+        return rulesetAt(ledger, get().wallNow().workDate).workplace;
+      },
+
+      locate: async () => (await readPlace())?.place ?? null,
+
+      async checkIn() {
+        if (!get().workplaceToday()) return get().dispatch({ type: 'CheckIn' });
+        return checkInAt(await readPlace());
+      },
+
+      async setAutoCheckIn(on) {
+        const { groupId } = get();
+        if (!groupId) return false;
+        // Asking now shows the permission prompt while the user is looking at the switch, not on some later open.
+        if (on && (!geolocation?.supported() || (await geolocation.current()).ok === false)) on = false;
+        await meta.set(META.autoCheckIn(groupId), on);
+        set({ autoCheckIn: on });
+        return on;
+      },
+
+      async tryAutoCheckIn() {
+        const { groupId, me, sync, ledger, autoCheckIn } = get();
+        if (!autoCheckIn || !groupId || !me || autoBusy) return null;
+        // Like settling: a stale device might not know about a check-in from this account's other device yet.
+        if (sync !== 'local' && sync !== 'synced') return null;
+        if (!get().workplaceToday() || checkInBlocker(ledger, me, get().wallNow().workDate) !== null) return null;
+        autoBusy = true;
+        try {
+          const read = await readPlace();
+          if (read?.place.kind !== 'inside') return null;
+          const d = await checkInAt(read);
+          return d.ok ? d : null;
+        } finally {
+          autoBusy = false;
+        }
       },
 
       applyRemote: (incoming) =>
@@ -562,6 +653,34 @@ export function createLedgerStore({
     };
   });
 
+  /**
+   * One position reading compared with today's workplace; the status goes to the UI, the fix only to the caller
+   * (and from there to `decide`), so no position outlives the check-in it was read for.
+   */
+  async function readPlace(): Promise<{ place: PlaceStatus; fix: GeoFix | null } | null> {
+    const workplace = store.getState().workplaceToday();
+    if (!workplace || !geolocation) {
+      store.setState({ place: null });
+      return null;
+    }
+    if (!store.getState().place) store.setState({ place: { kind: 'locating' } });
+    const r = await geolocation.current();
+    const at = clock.now().getTime();
+    const place: PlaceStatus = r.ok
+      ? { ...checkPlace(workplace, r.fix), accuracyMeters: r.fix.accuracyMeters, at }
+      : { kind: 'failed', reason: r.reason, at };
+    store.setState({ place });
+    return { place, fix: r.ok ? r.fix : null };
+  }
+
+  function checkInAt(read: { place: PlaceStatus; fix: GeoFix | null } | null): Promise<Decision> {
+    if (!read?.fix) {
+      const reason = read?.place.kind === 'failed' ? read.place.reason : 'unsupported';
+      return Promise.resolve(fail('LocationRequired', `No position: ${reason}`, { reason }));
+    }
+    return store.getState().dispatch({ type: 'CheckIn', position: read.fix });
+  }
+
   /** Participating needs membership; viewers become members here. */
   async function joinActive() {
     const { inviteCode } = store.getState();
@@ -593,6 +712,7 @@ export function createLedgerStore({
     remote,
     supportsEvidence: assets !== null,
     supportsPush: remote !== null && !!push?.supported(),
+    supportsLocation: !!geolocation?.supported(),
     ensureRegistered,
   });
 }

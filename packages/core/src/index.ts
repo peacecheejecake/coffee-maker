@@ -4,6 +4,7 @@ export * from './decide';
 export * from './errors';
 export * from './events';
 export * from './evolve';
+export * from './geo';
 export * from './ids';
 export * from './judge';
 export * from './motion';

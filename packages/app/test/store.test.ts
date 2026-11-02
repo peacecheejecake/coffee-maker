@@ -1,6 +1,6 @@
 import { asPlayerId, outstanding, type PlayerId } from '@coffee/core';
 import { describe, expect, it } from 'vitest';
-import { createLedgerStore, createMemoryStores, UNDO_WINDOW_MS, ulid, wallTime } from '../src';
+import { createFakeGeolocation, createLedgerStore, createMemoryStores, UNDO_WINDOW_MS, ulid, wallTime } from '../src';
 
 /** 2026-10-23 09:12 in Seoul. */
 function setup(start = Date.parse('2026-10-23T00:12:00Z')) {
@@ -189,5 +189,93 @@ describe('attendance mode', () => {
     const me = s.store.getState().me!;
     expect(outstanding(s.store.getState().ledger, me)).toBe(1);
     expect(outstanding(s.store.getState().ledger, asPlayerId('B'))).toBe(0);
+  });
+});
+
+describe('workplace check-in', () => {
+  const OFFICE = { lat: 37.5665, lng: 126.978, radiusMeters: 150 };
+  const inside = { ok: true as const, fix: { lat: 37.5666, lng: 126.978, accuracyMeters: 20 } };
+  const away = { ok: true as const, fix: { lat: 37.58, lng: 126.978, accuracyMeters: 20 } };
+
+  /** Solo attendance group with the office as workplace, adopted Fri 10-23; the clock is Mon 10-26 09:12. */
+  async function withOffice() {
+    let now = Date.parse('2026-10-23T00:12:00Z');
+    let seq = 0;
+    const geo = createFakeGeolocation();
+    const stores = createMemoryStores();
+    const store = createLedgerStore({ ...stores, geolocation: geo, clock: { now: () => new Date(now) }, newId: () => `id${++seq}` });
+    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, timeZone: 'Asia/Seoul' });
+    const ruleset = { ...store.getState().ledger.rulesets.at(-1)!.ruleset, workplace: OFFICE };
+    await store.getState().dispatch({ type: 'AdoptRules', ruleset });
+    now += 3 * 86_400_000;
+    return { store, geo, stores };
+  }
+
+  it('checks in only from inside, and keeps the position off the event', async () => {
+    const { store, geo, stores } = await withOffice();
+    expect(store.supportsLocation).toBe(true);
+    expect(store.getState().workplaceToday()).toEqual(OFFICE);
+
+    geo.next = { ok: false, reason: 'denied' };
+    let d = await store.getState().checkIn();
+    expect(!d.ok && d.error).toMatchObject({ code: 'LocationRequired', detail: { reason: 'denied' } });
+    expect(store.getState().place).toMatchObject({ kind: 'failed', reason: 'denied' });
+
+    geo.next = away;
+    d = await store.getState().checkIn();
+    expect(!d.ok && d.error.code).toBe('OutsideWorkplace');
+    expect(store.getState().place).toMatchObject({ kind: 'outside', accuracyMeters: 20 });
+
+    geo.next = inside;
+    d = await store.getState().checkIn();
+    expect(d.ok).toBe(true);
+    expect(stores.events.all.filter((e) => e.type === 'CheckedIn')).toHaveLength(1);
+    expect(JSON.stringify(stores.events.all)).not.toContain('37.5666');
+  });
+
+  it('auto check-in is opt-in per device and only fires inside, once a day', async () => {
+    const { store, geo, stores } = await withOffice();
+    geo.next = inside;
+    expect(await store.getState().tryAutoCheckIn()).toBeNull();
+    expect(geo.calls).toBe(0);
+
+    // Turning it on asks for the position; a refusal leaves it off.
+    geo.next = { ok: false, reason: 'denied' };
+    expect(await store.getState().setAutoCheckIn(true)).toBe(false);
+    geo.next = away;
+    expect(await store.getState().setAutoCheckIn(true)).toBe(true);
+    expect(await stores.meta.get(`autoCheckIn:${store.getState().groupId}`)).toBe(true);
+
+    expect(await store.getState().tryAutoCheckIn()).toBeNull();
+    expect(stores.events.all.some((e) => e.type === 'CheckedIn')).toBe(false);
+
+    geo.next = inside;
+    const before = geo.calls;
+    const d = await store.getState().tryAutoCheckIn();
+    expect(d?.ok).toBe(true);
+    // One reading both decides to check in and goes with the check-in.
+    expect(geo.calls - before).toBe(1);
+    const calls = geo.calls;
+    // Already checked in: no more position reads today.
+    expect(await store.getState().tryAutoCheckIn()).toBeNull();
+    expect(geo.calls).toBe(calls);
+  });
+
+  it('waits for the ledger to be in sync before checking in by itself', async () => {
+    const { store, geo } = await withOffice();
+    geo.next = inside;
+    await store.getState().setAutoCheckIn(true);
+    store.getState().setSync('syncing');
+    expect(await store.getState().tryAutoCheckIn()).toBeNull();
+  });
+
+  it('without a workplace nothing is located and check-in works as before', async () => {
+    const s = setup();
+    await s.store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, timeZone: 'Asia/Seoul' });
+    await s.store.getState().dispatch({ type: 'AdoptRules', ruleset: s.store.getState().ledger.rulesets.at(-1)!.ruleset });
+    s.advance(3 * 86_400_000);
+    expect(s.store.supportsLocation).toBe(false);
+    expect(await s.store.getState().locate()).toBeNull();
+    expect((await s.store.getState().checkIn()).ok).toBe(true);
   });
 });

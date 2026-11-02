@@ -72,6 +72,8 @@
 	<string>상환 증빙 사진을 앨범에서 고르기 위해 사진 보관함에 접근합니다.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>완납 증명서를 사진 보관함에 저장합니다.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>출두 체크가 출두 구역 안에서 이루어지는지 확인하기 위해 앱을 쓰는 동안 위치를 사용합니다. 위치는 기기 밖으로 보내지 않습니다.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

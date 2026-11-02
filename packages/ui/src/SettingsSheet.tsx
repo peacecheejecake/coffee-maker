@@ -2,6 +2,7 @@ import {
   activePlayers,
   computeCups,
   currentRuleset,
+  isPolygonArea,
   isSoloMember,
   judgeLateness,
   RULESET_LIMITS,
@@ -10,6 +11,7 @@ import {
   type CupTier,
   type Player,
   type Ruleset,
+  type Workplace,
 } from '@coffee/core';
 import type { Tone } from '@coffee/theme';
 import { useEffect, useMemo, useState } from 'react';
@@ -18,6 +20,7 @@ import { formatWorkDate } from './format';
 import { GroupSection } from './GroupSettings';
 import { useMotionFeedback } from './Motions';
 import { ColorDot, ConfirmBox, Field, Segmented, Sheet, Stepper } from './primitives';
+import { WorkplaceSheet } from './WorkplaceSheet';
 
 export const PALETTE_CHOICES = ['#e57373', '#64b5f6', '#81c784', '#ffb74d', '#ba68c8', '#4dd0e1', '#f06292', '#aed581', '#ffd54f', '#90a4ae'];
 
@@ -73,6 +76,11 @@ function RulesEditor() {
   // Alone, a rule change passes on the spot, so it reads as a plain save.
   const solo = isSoloMember(ledger, me);
   const [confirmAdopt, setConfirmAdopt] = useState(false);
+  const [pickingPlace, setPickingPlace] = useState(false);
+  const setWorkplace = (w: Workplace | undefined) => {
+    const { workplace: _, ...rest } = draft;
+    setDraft(w ? { ...rest, workplace: w } : rest);
+  };
 
   const schedule = (rs: Ruleset) => {
     const steps = lateSchedule(rs);
@@ -180,6 +188,13 @@ function RulesEditor() {
           />
         </Field>
         </div>
+        {attendance && (
+          <WorkplaceField
+            value={draft.workplace}
+            changed={JSON.stringify(draft.workplace) !== JSON.stringify(saved.workplace)}
+            onEdit={() => setPickingPlace(true)}
+          />
+        )}
         <p className="cm-muted">{t('settings.timezone', { tz: draft.timezone })}</p>
         {dirty && (
           <div className="cm-preview is-late" role="status">
@@ -222,7 +237,34 @@ function RulesEditor() {
           />
         )}
       </fieldset>
+      <WorkplaceSheet open={pickingPlace} onOpenChange={setPickingPlace} value={draft.workplace} onApply={setWorkplace} />
     </section>
+  );
+}
+
+/** Attendance mode: the area check-ins must come from (part of the rules, so it changes by adoption or motion). */
+function WorkplaceField({ value, changed, onEdit }: { value: Workplace | undefined; changed: boolean; onEdit: () => void }) {
+  const t = useT();
+  return (
+    <div className="cm-field" role="group" aria-labelledby="workplace-h">
+      <span className="cm-field-label" id="workplace-h">
+        {t('workplace.title')}
+      </span>
+      <div className="cm-row cm-wrap">
+        <span>
+          📍{' '}
+          {!value
+            ? t('workplace.none')
+            : isPolygonArea(value)
+              ? t('workplace.summaryPolygon', { label: value.label ?? t('workplace.unnamed'), count: value.points.length })
+              : t('workplace.summary', { label: value.label ?? t('workplace.unnamed'), radius: value.radiusMeters })}
+        </span>
+        <button type="button" className="cm-button" onClick={onEdit}>
+          {t('workplace.edit')}
+        </button>
+      </div>
+      <span className="cm-field-hint">{changed ? t('workplace.pending') : t('workplace.hint')}</span>
+    </div>
   );
 }
 
@@ -534,6 +576,7 @@ function DeviceSection() {
       </Field>
       <NotificationsField />
       <ReminderField />
+      <AutoCheckInField />
       <Field label={t('settings.sound')}>
         <Segmented<'on' | 'off'>
           label={t('settings.sound')}
@@ -584,6 +627,40 @@ function NotificationsField() {
             const result = await api.getState().setNotifications(v === 'on');
             setOn(result);
             if (v === 'on' && !result) toast(t('settings.notifications.denied'), 'error');
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    </Field>
+  );
+}
+
+/** Per device: check in by itself when the app is opened inside the workplace. Shown once the rules set one. */
+function AutoCheckInField() {
+  const t = useT();
+  const { toast } = useUi();
+  const api = useStoreApi();
+  const on = useLedger((s) => s.autoCheckIn);
+  const me = useLedger((s) => s.me);
+  const workplace = useLedger((s) => s.workplaceToday)();
+  const [busy, setBusy] = useState(false);
+  if (!me || !workplace || !api.supportsLocation) return null;
+  return (
+    <Field label={t('settings.autoCheckIn')} hint={t('settings.autoCheckIn.hint')}>
+      <Segmented<'on' | 'off'>
+        label={t('settings.autoCheckIn')}
+        value={on ? 'on' : 'off'}
+        disabled={busy}
+        options={[
+          { value: 'on', label: t('settings.sound.on') },
+          { value: 'off', label: t('settings.sound.off') },
+        ]}
+        onChange={async (v) => {
+          setBusy(true);
+          try {
+            const result = await api.getState().setAutoCheckIn(v === 'on');
+            if (v === 'on' && !result) toast(t('settings.autoCheckIn.denied'), 'error');
           } finally {
             setBusy(false);
           }

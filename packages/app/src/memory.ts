@@ -1,5 +1,21 @@
 import type { GroupId, LedgerEvent } from '@coffee/core';
-import type { AssetStore, EventStore, MetaStore } from './ports';
+import type { AssetStore, EventStore, GeolocationPort, LocateResult, MetaStore } from './ports';
+
+/** Scripted position for tests: set `next` to what the device should report. */
+export function createFakeGeolocation(
+  next: LocateResult = { ok: false, reason: 'unavailable' },
+): GeolocationPort & { next: LocateResult; calls: number } {
+  const fake = {
+    next,
+    calls: 0,
+    supported: () => true,
+    current: async () => {
+      fake.calls++;
+      return fake.next;
+    },
+  };
+  return fake;
+}
 
 export function createMemoryAssets(): AssetStore {
   const blobs = new Map<string, Blob>();
