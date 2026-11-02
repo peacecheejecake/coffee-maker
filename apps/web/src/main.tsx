@@ -5,12 +5,20 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { config, syncEnabled } from './config';
-import { createNativePlatform, createNativePush, initNativeShell, isNative } from './native';
+import { AUTH_CALLBACK_URL, createNativePlatform, createNativePush, initNativeShell, isNative, openAuthPage } from './native';
 import { createBrowserPush } from './push';
 import './styles.css';
 
 // Composition root: the only place that picks concrete adapters.
-const remote = syncEnabled ? createSupabaseRemote(config.supabaseUrl!, config.supabaseAnonKey!) : null;
+// In the native shell Google sign-in runs in an in-app browser and returns through coffeemaker://auth-callback.
+const remote = syncEnabled
+  ? createSupabaseRemote(
+      config.supabaseUrl!,
+      config.supabaseAnonKey!,
+      undefined,
+      isNative() ? { callbackUrl: AUTH_CALLBACK_URL, open: openAuthPage } : undefined,
+    )
+  : null;
 // A separate database name keeps a synced profile apart from local-only data on the same origin.
 const local = createLocalIdbStores(remote ? 'coffee-maker-sync' : 'coffee-maker');
 const store = createLedgerStore({
@@ -40,7 +48,10 @@ const navigate = (path: string) => {
 async function bootstrap() {
   const platform = isNative() ? await createNativePlatform() : webPlatform;
   if (isNative()) {
-    void initNativeShell(navigate);
+    void initNativeShell(navigate, {
+      complete: (url) => remote?.completeAuthRedirect(url) ?? Promise.resolve(),
+      refreshAccount: () => store.getState().refreshAccount(),
+    });
     // QA builds: VITE_NATIVE_START_PATH=/demo opens a route on launch (no deep-link dialog to tap through).
     const start = import.meta.env.VITE_NATIVE_START_PATH;
     if (start && location.pathname === '/') history.replaceState(null, '', start);

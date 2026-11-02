@@ -1,6 +1,7 @@
-import { JoinScreen } from '@coffee/ui';
+import { JoinScreen, useUi } from '@coffee/ui';
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { Home, TvHome } from './Home';
+import { onNativeNotice } from './native';
 
 // The sandbox (and leva) never ship in production builds.
 const Sandbox = import.meta.env.DEV ? lazy(() => import('./sandbox/Sandbox').then((m) => ({ default: m.Sandbox }))) : null;
@@ -15,6 +16,9 @@ export function App() {
     addEventListener('popstate', onPop);
     return () => removeEventListener('popstate', onPop);
   }, []);
+  // Native sign-in failures (reported by the deep-link handler, outside React).
+  const { toast } = useUi();
+  useEffect(() => onNativeNotice((message) => toast(message, 'error')), [toast]);
   const goHome = useCallback(() => {
     history.replaceState(null, '', '/');
     setPath('/');

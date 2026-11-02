@@ -18,15 +18,42 @@ const fromRow = (row: EventRow): LedgerEvent =>
 const toBody = ({ seq: _seq, serverAt: _serverAt, ...rest }: LedgerEvent) => rest;
 
 /**
+ * How an OAuth sign-in leaves the app and comes back. Without one (the web), the page itself is redirected to
+ * the provider and Supabase sends it back to `returnTo`. The native shell passes one: the provider page opens
+ * in an in-app browser and Supabase returns through a custom-scheme deep link (`callbackUrl`), which the shell
+ * hands to `completeAuthRedirect`.
+ */
+export interface AuthRedirect {
+  /** Where Supabase sends the browser after sign-in, e.g. coffeemaker://auth-callback. Must be allow-listed. */
+  callbackUrl: string;
+  /** Opens the provider's sign-in page; `returnTo` is where the app should be once the callback is handled. */
+  open(url: string, returnTo: string): Promise<void>;
+}
+
+/**
  * RemoteSync over Supabase (supabase/migrations): anonymous auth, RPCs for every write, RLS-guarded reads,
  * and Realtime inserts for live updates.
+ *
+ * OAuth uses the PKCE flow: the redirect carries a one-time `?code=` (exchanged by supabase-js on page load
+ * on the web, by `completeAuthRedirect` in the native shell) instead of tokens in the URL fragment.
  */
 export function createSupabaseRemote(
   url: string,
   anonKey: string,
   options?: SupabaseClientOptions<'public'>,
-): RemoteSync & { client: SupabaseClient } {
-  const client = createClient(url, anonKey, options);
+  authRedirect?: AuthRedirect,
+): RemoteSync & { client: SupabaseClient; completeAuthRedirect(callbackUrl: string): Promise<void> } {
+  const client = createClient(url, anonKey, { ...options, auth: { flowType: 'pkce', ...options?.auth } });
+
+  /** Native: open the provider page ourselves instead of letting supabase-js navigate the web view. */
+  const leave = async (result: { data: { url: string | null }; error: { message: string } | null }, returnTo: string) => {
+    if (result.error) throw new Error(result.error.message);
+    if (!authRedirect) return;
+    if (!result.data.url) throw new Error('No sign-in URL');
+    await authRedirect.open(result.data.url, returnTo);
+  };
+  const redirectOptions = (returnTo: string) =>
+    authRedirect ? { redirectTo: authRedirect.callbackUrl, skipBrowserRedirect: true } : { redirectTo: returnTo };
 
   const check = <T>({ data, error }: { data: T; error: { message: string } | null }): T => {
     if (error) throw new Error(error.message);
@@ -169,8 +196,7 @@ export function createSupabaseRemote(
     },
 
     async signIn(provider, returnTo) {
-      const { error } = await client.auth.signInWithOAuth({ provider, options: { redirectTo: returnTo } });
-      if (error) throw new Error(error.message);
+      await leave(await client.auth.signInWithOAuth({ provider, options: redirectOptions(returnTo) }), returnTo);
     },
 
     async signOut() {
@@ -179,7 +205,23 @@ export function createSupabaseRemote(
     },
 
     async linkAccount(provider) {
-      const { error } = await client.auth.linkIdentity({ provider, options: { redirectTo: location.origin } });
+      // The web comes back to the start page; the native shell back to where Settings was opened.
+      const returnTo = authRedirect ? location.href : location.origin;
+      await leave(await client.auth.linkIdentity({ provider, options: redirectOptions(returnTo) }), returnTo);
+    },
+
+    /** Finishes a native sign-in from the deep link Supabase redirected to (`?code=…` or `?error_description=…`). */
+    async completeAuthRedirect(callbackUrl) {
+      const parsed = new URL(callbackUrl);
+      const params = new URLSearchParams(parsed.search);
+      // Some errors come back in the fragment.
+      new URLSearchParams(parsed.hash.slice(1)).forEach((v, k) => params.has(k) || params.set(k, v));
+      const failure = params.get('error_description') ?? params.get('error');
+      if (failure) throw new Error(failure);
+      const code = params.get('code');
+      if (!code) throw new Error('No authorization code in the sign-in callback');
+      const flowId = params.get('sb_flow_id');
+      const { error } = await client.auth.exchangeCodeForSession(code, flowId ? { flowId } : undefined);
       if (error) throw new Error(error.message);
     },
 
