@@ -131,14 +131,24 @@ function Picker({
         : null
       : center && { lat: center.lat, lng: center.lng, radiusMeters: radius, ...named };
   const issue = draft && shape === 'polygon' ? workplaceIssues(draft).find(([path]) => path.startsWith('points')) : undefined;
-  const area: MapArea | null =
-    shape === 'polygon'
-      ? points.length > 0
-        ? { kind: 'polygon', points }
-        : null
-      : center && { kind: 'circle', center, radiusMeters: radius };
+  // Stable between edits: the map redraws (and may re-frame) only when the area itself changes.
+  const area = useMemo<MapArea | null>(
+    () =>
+      shape === 'polygon'
+        ? points.length > 0
+          ? { kind: 'polygon', points }
+          : null
+        : center && { kind: 'circle', center, radiusMeters: radius },
+    [shape, points, center, radius],
+  );
   const labels = useMemo(
-    () => ({ map: t('workplace.map'), vertex: (n: number) => t('workplace.vertex', { n }), insert: t('workplace.vertexAdd') }),
+    () => ({
+      map: t('workplace.map'),
+      vertex: (n: number) => t('workplace.vertex', { n }),
+      insert: t('workplace.vertexAdd'),
+      expand: t('workplace.mapExpand'),
+      collapse: t('workplace.mapCollapse'),
+    }),
     [t],
   );
 

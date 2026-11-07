@@ -511,7 +511,7 @@ function InviteSection() {
           <div className="cm-row">
             <button
               type="button"
-              className="cm-button"
+              className="cm-button cm-button-copy"
               onClick={async () => {
                 await navigator.clipboard?.writeText(url);
                 toast(t('invite.copied'));
@@ -519,12 +519,12 @@ function InviteSection() {
               }}
             >
               {t('invite.copy')}
+              {copied && (
+                <svg className="cm-copied" width="16" height="16" viewBox="0 0 16 16" role="img" aria-label={t('invite.copied')}>
+                  <path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
             </button>
-            {copied && (
-              <span className="cm-copied" role="img" aria-label={t('invite.copied')}>
-                ✓
-              </span>
-            )}
             {platform.canShare({ url }) && (
               <button type="button" className="cm-button" onClick={() => void platform.share({ title: t('app.title'), url })}>
                 {t('invite.share')}
