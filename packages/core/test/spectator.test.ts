@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RULESET, isSpectator, missedDays, type LedgerEvent } from '../src';
+import { DEFAULT_RULESET, isSpectator, missedDays, type EventId, type LedgerEvent } from '../src';
 import { A, B, C, D, createLedger, type Ledger } from './harness';
 
 /** Moves the clock and `today` together; the harness clock starts Fri 2026-10-23 09:00 KST. */
@@ -22,7 +22,7 @@ function group() {
 const propose = (l: Ledger, by: typeof A, playerIds: (typeof A)[], spectator = true, forgive = false) =>
   l.run(by, { type: 'ProposeMotion', motion: { kind: 'spectate', playerIds, spectator, ...(forgive && { forgive }) } })[0]!;
 
-const approve = (l: Ledger, by: typeof A, motionId: string) => l.run(by, { type: 'VoteMotion', motionId, vote: 'approve' });
+const approve = (l: Ledger, by: typeof A, motionId: EventId) => l.run(by, { type: 'VoteMotion', motionId, vote: 'approve' });
 
 /** Gives `player` cups the way attendance mode allows: an adjustment everyone else approves. */
 function owe(l: Ledger, player: typeof A, cups: number) {
