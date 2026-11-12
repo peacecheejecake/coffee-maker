@@ -12,10 +12,10 @@ import { isWorkDate } from './time';
  * so `evolve` must re-derive that list itself.
  */
 
-/** Players who take part in motions: active and using the app themselves. */
+/** Players who take part in motions: active, using the app themselves, and not on the sidelines. */
 export const motionMembers = (s: LedgerState): PlayerId[] =>
   activePlayers(s)
-    .filter((p) => s.acted[p.id])
+    .filter((p) => s.acted[p.id] && !s.spectators[p.id])
     .map((p) => p.id);
 
 /** Nobody else takes part, so every motion of `me` passes on the spot (the UI then skips the voting wording). */
@@ -41,8 +41,14 @@ export function motionVoters(
       return members.filter((id) => id !== motion.playerId);
     case 'redeem':
       return members.filter((id) => id !== proposerId && id !== motion.debtorId);
+    case 'spectate':
+      // The people being moved do not decide on it, in either direction.
+      return members.filter((id) => !motion.playerIds.includes(id));
   }
 }
+
+/** Bounds the payload of a forged event; far above any real group. */
+const MAX_SPECTATE_PLAYERS = 50;
 
 const STAMPS: readonly StampQuality[] = ['clean', 'faint', 'smudged'];
 
@@ -75,6 +81,16 @@ export function motionIssue(s: LedgerState, motion: Motion): string | undefined 
       if (!Array.isArray(motion.recipients) || motion.recipients.length === 0) return 'recipients required';
       if (motion.recipients.some((r) => !s.players[r] || r === motion.debtorId)) return 'invalid recipient';
       if (!STAMPS.includes(motion.stampQuality)) return 'invalid stamp';
+      return undefined;
+    case 'spectate':
+      if (typeof motion.spectator !== 'boolean') return 'invalid spectator flag';
+      if (!Array.isArray(motion.playerIds) || motion.playerIds.length === 0) return 'players required';
+      if (new Set(motion.playerIds).size !== motion.playerIds.length) return 'duplicate players';
+      if (motion.playerIds.length > MAX_SPECTATE_PLAYERS) return `at most ${MAX_SPECTATE_PLAYERS} players`;
+      if (!motion.playerIds.every(active)) return 'no such active player';
+      if (motion.forgive !== undefined && (typeof motion.forgive !== 'boolean' || (motion.forgive && !motion.spectator))) {
+        return 'only turning into a spectator can forgive cups';
+      }
       return undefined;
     default:
       return 'unknown motion';

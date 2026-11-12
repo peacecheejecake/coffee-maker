@@ -4,6 +4,7 @@ import {
   currentRuleset,
   isPolygonArea,
   isSoloMember,
+  isSpectator,
   judgeLateness,
   RULESET_LIMITS,
   toMinutes,
@@ -398,6 +399,7 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
   const [color, setColor] = useState(player.appearance.color);
   const [start, setStart] = useState(player.startTimeOverride ?? '');
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const spectating = useLedger((s) => isSpectator(s.ledger, player.id));
   const dirty = name !== player.name || color !== player.appearance.color || start !== (player.startTimeOverride ?? '');
   const revert = () => {
     setName(player.name);
@@ -465,6 +467,7 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
           </button>
         </div>
       )}
+      {spectating && <span className="cm-badge">{t('spectate.badge')}</span>}
       {confirmArchive && (
         <div className="cm-warning" role="alert">
           <p>

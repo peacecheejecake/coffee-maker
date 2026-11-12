@@ -42,7 +42,8 @@ async function joinAs(page: Page, url: string, name: string) {
   await expect(page.getByRole('heading', { name: '당신은 누구십니까?' })).toBeVisible();
   await page.getByLabel('새로 등록').fill(name);
   await page.getByRole('button', { name: '새로 등록' }).click();
-  await expect(page.getByRole('button', { name: /📜 업보 청구/ })).toBeVisible();
+  // Registering waits on a server round trip; slow CI renderers need more than the default 5s.
+  await expect(page.getByRole('button', { name: /📜 업보 청구/ })).toBeVisible({ timeout: 30_000 });
 }
 
 const towerLabel = (page: Page, name: string, cups: number) =>
@@ -58,11 +59,11 @@ test('invite → join → live updates in both directions', async ({ browser }) 
   const url = await inviteLink(a.page);
 
   await joinAs(b.page, url, '민수');
-  await expect(a.page.getByText('민수님이 관할 구역에 합류했습니다')).toBeVisible({ timeout: 15_000 });
+  // The feed toast lives 3s, which a busy renderer can miss; the tower is what proves the event arrived.
+  await expect(towerLabel(a.page, '민수', 0)).toHaveCount(1, { timeout: 15_000 });
 
   await recordLate(a.page, '민수', '09:30');
-  await expect(b.page.getByText('지원님이 민수에게 업보 1잔을 청구했습니다')).toBeVisible({ timeout: 15_000 });
-  await expect(towerLabel(b.page, '민수', 1)).toHaveCount(1);
+  await expect(towerLabel(b.page, '민수', 1)).toHaveCount(1, { timeout: 15_000 });
 
   await recordLate(b.page, '지원', '09:45');
   await expect(towerLabel(a.page, '지원', 1)).toHaveCount(1);

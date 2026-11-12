@@ -16,7 +16,7 @@ import { asEventId, asPlayerId, type EventId, type GroupId, type PlayerId } from
 import { computeCups, judgeLateness } from './judge';
 import type { Player, PlayerAppearance, PlayerPatch, PlayerRole } from './player';
 import { MAX_CUPS_PER_RECORD, RETRACT_WINDOW_MINUTES } from './policy';
-import { isSoloMember, motionIssue, motionVoters } from './motionRules';
+import { isSoloMember, motionIssue, motionMembers, motionVoters } from './motionRules';
 import { err, ok, type Result } from './result';
 import { validateRuleset, type Ruleset } from './ruleset';
 import {
@@ -486,6 +486,8 @@ function checkIn(s: LedgerState, cmd: Cmd<'CheckIn'>, ctx: DecideContext, make: 
       return fail('RulesNotAdopted', 'The rules have not been confirmed yet');
     case 'notStarted':
       return fail('RulesNotAdopted', `Attendance starts on ${s.attendance.startsOn}`, { startsOn: s.attendance.startsOn });
+    case 'spectator':
+      return fail('NotPermitted', 'Spectators do not check in');
     case 'checkedIn':
     case 'missed':
       return fail('AlreadyCheckedIn', 'Already settled for today');
@@ -545,6 +547,10 @@ function proposeMotion(s: LedgerState, cmd: Cmd<'ProposeMotion'>, ctx: DecideCon
   if (motion.kind === 'holiday') motion = { ...motion, name: motion.name.trim() };
   if (motion.kind === 'adjust') motion = { ...motion, reason: motion.reason.trim() };
   if (motion.kind === 'redeem') motion = { ...motion, recipients: [...new Set(motion.recipients)] };
+  if (motion.kind === 'spectate') {
+    const { forgive, ...rest } = motion;
+    motion = { ...rest, playerIds: [...new Set(motion.playerIds)], ...(forgive && motion.spectator && { forgive: true }) };
+  }
 
   switch (motion.kind) {
     case 'ruleset': {
@@ -566,6 +572,18 @@ function proposeMotion(s: LedgerState, cmd: Cmd<'ProposeMotion'>, ctx: DecideCon
       const debtorId = motion.debtorId;
       const pending = motionsOpen(s, ctx.now).filter((m) => m.motion.kind === 'redeem' && m.motion.debtorId === debtorId).length;
       if (outstanding(s, debtorId) - pending < 1) return fail('NothingToRedeem', 'No outstanding cups');
+      break;
+    }
+    case 'spectate': {
+      // Every player must actually change sides; a motion that changes nothing is not worth a vote.
+      const unchanged = motion.playerIds.filter((id) => !!s.spectators[id] === motion.spectator);
+      if (unchanged.length > 0) {
+        return fail('NoChange', motion.spectator ? 'Already a spectator' : 'Not a spectator', { playerIds: unchanged });
+      }
+      // The group keeps at least one participant, or nobody would be left to be judged or to vote.
+      if (motionMembers(s).filter((id) => !motion.playerIds.includes(id)).length === 0 && motion.spectator) {
+        return fail('NoEligibleVoters', 'At least one participant has to remain');
+      }
       break;
     }
     case 'holiday':

@@ -1,7 +1,10 @@
 import {
+  activePlayers,
   isPolygonArea,
   isSoloMember,
+  isSpectator,
   MAX_CUPS_PER_RECORD,
+  motionMembers,
   motionStatus,
   outstanding,
   type LedgerState,
@@ -47,6 +50,11 @@ export function motionTitle(t: Translate, s: LedgerState, m: Motion): string {
         : t('motion.adjustRemove', { player: name(m.playerId), count: -m.delta });
     case 'redeem':
       return t('motion.redeem', { debtor: name(m.debtorId), recipients: m.recipients.map(name).join(', ') });
+    case 'spectate': {
+      const players = m.playerIds.map(name).join(', ');
+      if (!m.spectator) return t('motion.participate', { players });
+      return t(m.forgive ? 'motion.spectateForgive' : 'motion.spectate', { players });
+    }
   }
 }
 
@@ -165,6 +173,78 @@ export function AdjustForm({ playerId, onDone }: { playerId: PlayerId; onDone: (
       </Field>
       <button type="submit" className="cm-button cm-button-primary" disabled={!reason.trim() || delta === 0}>
         {t(solo ? 'adjust.submitSolo' : 'adjust.submit')}
+      </button>
+    </form>
+  );
+}
+
+/**
+ * Proposes moving several players at once: participants → spectators (optionally forgiving what they owe),
+ * or spectators → participants (ADR 0004).
+ */
+export function SpectateForm({ spectator }: { spectator: boolean }) {
+  const t = useT();
+  const run = useCommand();
+  const feedback = useMotionFeedback();
+  const ledger = useLedger((s) => s.ledger);
+  const solo = useLedger((s) => isSoloMember(s.ledger, s.me));
+  const [picked, setPicked] = useState<PlayerId[]>([]);
+  const [forgive, setForgive] = useState(false);
+
+  // Turning into spectators: today's participants; coming back: the current spectators.
+  const candidates = activePlayers(ledger).filter((p) => isSpectator(ledger, p.id) !== spectator);
+  const remaining = motionMembers(ledger).filter((id) => !picked.includes(id)).length;
+  const emptiesGroup = spectator && picked.length > 0 && remaining === 0;
+  const owed = picked.reduce((sum, id) => sum + outstanding(ledger, id), 0);
+  if (candidates.length === 0) return null;
+
+  const toggle = (id: PlayerId) => setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const title = t(spectator ? 'spectate.title' : 'spectate.returnTitle');
+  const label = t(spectator ? 'spectate.pick' : 'spectate.returnPick');
+
+  return (
+    <form
+      className="cm-form"
+      aria-label={title}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        const d = await run({
+          type: 'ProposeMotion',
+          motion: { kind: 'spectate', playerIds: picked, spectator, ...(spectator && forgive && { forgive: true }) },
+        });
+        if (!d.ok) return;
+        feedback(d.value[0]?.id);
+        setPicked([]);
+        setForgive(false);
+      }}
+    >
+      <h4>{title}</h4>
+      {spectator && <p className="cm-muted">{t(solo ? 'spectate.hintSolo' : 'spectate.hint')}</p>}
+      <fieldset className="cm-chips">
+        <legend>{label}</legend>
+        {candidates.map((p) => (
+          <button key={p.id} type="button" className="cm-chip" aria-pressed={picked.includes(p.id)} onClick={() => toggle(p.id)}>
+            {p.name}
+          </button>
+        ))}
+      </fieldset>
+      {spectator && (
+        <label className="cm-row">
+          <input type="checkbox" checked={forgive} onChange={(e) => setForgive(e.target.checked)} />
+          <span>
+            {t('spectate.forgive')}
+            {owed > 0 ? ` (${owed})` : ''}
+          </span>
+        </label>
+      )}
+      {spectator && <p className="cm-muted">{t('spectate.forgiveHint')}</p>}
+      {emptiesGroup && (
+        <p className="cm-warning" role="alert">
+          {t('spectate.lastOne')}
+        </p>
+      )}
+      <button type="submit" className="cm-button cm-button-primary" disabled={picked.length === 0 || emptiesGroup}>
+        {t(spectator ? (solo ? 'spectate.submitSolo' : 'spectate.submit') : solo ? 'spectate.returnSubmitSolo' : 'spectate.returnSubmit')}
       </button>
     </form>
   );

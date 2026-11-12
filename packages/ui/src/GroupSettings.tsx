@@ -1,6 +1,7 @@
 import { activePlayers, type GroupMode, type PlayerId } from '@coffee/core';
 import { useEffect, useState } from 'react';
 import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
+import { SpectateForm } from './Motions';
 import { ConfirmBox, Field, Segmented } from './primitives';
 
 /** Mode switch and owner handover (owner only; everyone else sees who decides). */
@@ -46,6 +47,13 @@ export function GroupSection() {
       {!isOwner && <p className="cm-muted">{t('mode.ownerOnly')}</p>}
       <p className="cm-muted">{t('owner.current', { name: owner?.name ?? '?' })}</p>
       {isOwner && <OwnerTransfer me={me} />}
+      {/* Spectators exist only where people check themselves in. */}
+      {ledger.mode === 'attendance' && !!me && (
+        <>
+          <SpectateForm spectator />
+          <SpectateForm spectator={false} />
+        </>
+      )}
     </section>
   );
 }

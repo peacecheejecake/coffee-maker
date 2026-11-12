@@ -173,11 +173,12 @@ export const attendanceOn = (s: LedgerState, playerId: PlayerId, date: WorkDate)
   s.attendance.days[attendanceKey(playerId, date)];
 
 /** Why a player cannot check in on a date, regardless of where they are. */
-export type CheckInBlocker = 'wrongMode' | 'notAdopted' | 'notStarted' | 'checkedIn' | 'missed' | 'dayOff';
+export type CheckInBlocker = 'wrongMode' | 'notAdopted' | 'notStarted' | 'checkedIn' | 'missed' | 'dayOff' | 'spectator';
 
 /** What stops `playerId` from checking in on `date` apart from location, or null when nothing does. */
 export function checkInBlocker(s: LedgerState, playerId: PlayerId, date: WorkDate): CheckInBlocker | null {
   if (s.mode !== 'attendance') return 'wrongMode';
+  if (s.spectators[playerId]) return 'spectator';
   const { startsOn } = s.attendance;
   if (!startsOn) return 'notAdopted';
   if (date < startsOn) return 'notStarted';
@@ -205,7 +206,7 @@ export function missedDays(s: LedgerState, now: Instant): { playerId: PlayerId; 
   for (let date = startsOn > earliest ? startsOn : earliest; date < last; date = addDays(date, 1)) {
     const rs = rulesetAt(s, date);
     for (const p of activePlayers(s)) {
-      if (!s.acted[p.id]) continue;
+      if (!s.acted[p.id] || s.spectators[p.id]) continue;
       const joined = s.joinedOn[p.id];
       if (joined !== undefined && joined >= date) continue;
       if (attendanceOn(s, p.id, date) !== undefined) continue;
@@ -214,6 +215,9 @@ export function missedDays(s: LedgerState, now: Instant): { playerId: PlayerId; 
   }
   return out;
 }
+
+/** On the sidelines: still in the ledger and still watching, but not judged, charged or asked to vote. */
+export const isSpectator = (s: LedgerState, playerId: PlayerId | null | undefined): boolean => !!playerId && !!s.spectators[playerId];
 
 export const motionsOpen = (s: LedgerState, now: Instant): MotionRecord[] =>
   s.motionOrder.flatMap((id) => {

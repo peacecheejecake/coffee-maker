@@ -82,6 +82,7 @@ const BLOCKER_LABEL: Record<Exclude<CheckInBlocker, 'wrongMode' | 'notStarted'>,
   checkedIn: 'checkin.done',
   missed: 'checkin.missed',
   dayOff: 'checkin.dayOff',
+  spectator: 'checkin.spectator',
 };
 
 /** Why the workplace keeps the button disabled, or null when the last reading was inside. */

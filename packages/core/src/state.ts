@@ -173,6 +173,8 @@ export interface LedgerState {
   vacations: Partial<Record<PlayerId, WorkDate[]>>;
   motions: Partial<Record<EventId, MotionRecord>>;
   motionOrder: EventId[];
+  /** Players moved to the sidelines by an approved `spectate` motion (attendance mode only). */
+  spectators: Partial<Record<PlayerId, true>>;
 }
 
 export const attendanceKey = (playerId: PlayerId, date: WorkDate) => `${playerId}|${date}`;
@@ -198,4 +200,5 @@ export const emptyState = (): LedgerState => ({
   vacations: {},
   motions: {},
   motionOrder: [],
+  spectators: {},
 });

@@ -472,6 +472,7 @@ function judged(s: LedgerState, playerId: PlayerId, date: WorkDate): boolean {
     date >= startsOn &&
     !!player &&
     !player.archived &&
+    !s.spectators[playerId] &&
     // Players nobody uses cannot check in; they are never charged.
     !!s.acted[playerId] &&
     // Joining mid-day never costs that day.
@@ -653,6 +654,8 @@ function applyMotion(s: LedgerState, m: MotionRecord, motion: Motion, decidedBy:
       return s.mode === 'attendance' ? setHoliday(s, motion.date, motion.name, motion.off, at) : s;
     case 'adjust':
       return adjust(s, m, motion, today, at);
+    case 'spectate':
+      return s.mode === 'attendance' ? spectate(s, motion, today, at) : s;
     case 'redeem': {
       if (s.mode !== 'attendance') return s;
       const { type: _, ...meta } = decidedBy;
@@ -704,11 +707,17 @@ function adjust(
       corrections: [],
     });
   }
-  // Removing cups: take them off the top and lower each source record's claim, so every record keeps
-  // showing max(0, claim − paid) cups. A record left with no claim at all counts as waived.
+  return takeCupsOffTop(s, player.id, -motion.delta, at);
+}
+
+/**
+ * Removes up to `count` cups from the top of a tower and lowers each source record's claim, so every record
+ * keeps showing max(0, claim − paid) cups. A record left with no claim at all counts as waived.
+ */
+function takeCupsOffTop(s: LedgerState, playerId: PlayerId, count: number, at: Instant): LedgerState {
   let next = s;
-  const tower = getTower(s, player.id);
-  const removed = tower.cups.slice(Math.max(0, tower.cups.length + motion.delta));
+  const tower = getTower(s, playerId);
+  const removed = tower.cups.slice(Math.max(0, tower.cups.length - count));
   next = putTower(next, { ...tower, cups: tower.cups.slice(0, tower.cups.length - removed.length) });
   for (const cup of removed) {
     const rec = next.lates[cup.sourceId];
@@ -716,6 +725,27 @@ function adjust(
     const cups = rec.cups - 1;
     next = putLate(next, { ...rec, cups, cupsOverridden: true });
     if (cups === 0) next = closeRecord(next, { ...rec, cups }, 'waived', at);
+  }
+  return next;
+}
+
+/**
+ * Moves players between participant and spectator. Only those whose state actually changes are touched, so a
+ * motion that lost a race with another one does the rest of its job. Coming back counts like joining again:
+ * the days spent on the sidelines are never charged.
+ */
+function spectate(s: LedgerState, motion: Extract<Motion, { kind: 'spectate' }>, today: WorkDate, at: Instant): LedgerState {
+  let next = s;
+  for (const id of motion.playerIds) {
+    const player = next.players[id];
+    if (!player || player.archived || !!next.spectators[id] === motion.spectator) continue;
+    if (motion.spectator) {
+      next = { ...next, spectators: { ...next.spectators, [id]: true } };
+      if (motion.forgive) next = takeCupsOffTop(next, id, getTower(next, id).cups.length, at);
+    } else {
+      const { [id]: _, ...rest } = next.spectators;
+      next = { ...next, spectators: rest, joinedOn: { ...next.joinedOn, [id]: today } };
+    }
   }
   return next;
 }
