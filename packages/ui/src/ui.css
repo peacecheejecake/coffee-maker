@@ -1095,16 +1095,14 @@ input[type='color'] {
   font-size: 13px;
 }
 
+.cm-button-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .cm-copied {
-  display: inline-grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  background: #6fcf97;
-  color: #10291a;
-  font-weight: 700;
-  align-self: center;
+  color: #6fcf97;
 }
 
 /* ── Sync indicator ──────────────────────────────────────── */
@@ -1356,15 +1354,58 @@ input[type='color'] {
 
 /* ── Workplace (출두 구역) ───────────────────────────────── */
 
+.cm-map-frame {
+  position: relative;
+  /* Leaflet panes use z-index 400+; keep them under the sheet header. */
+  isolation: isolate;
+  z-index: 0;
+}
+
 .cm-map {
   height: 260px;
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid var(--cm-border);
-  /* Leaflet panes use z-index 400+; keep them under the sheet header. */
-  position: relative;
-  isolation: isolate;
-  z-index: 0;
+}
+
+/* "크게 보기": the map covers the whole sheet. The sheet's backdrop-filter makes it the box that fixed children fill. */
+.cm-map-frame.is-expanded {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+}
+
+.cm-map-frame.is-expanded .cm-map {
+  height: 100%;
+  border-radius: 0;
+  border: 0;
+}
+
+/* The sheet clips the map to its rounded corners and, on phones, keeps its full height: without the map in the
+   flow its content would shrink and the sheet with it. */
+.cm-sheet:has(.cm-map-frame.is-expanded) {
+  overflow: hidden;
+}
+
+@media (max-width: 759px) {
+  .cm-sheet:has(.cm-map-frame.is-expanded) {
+    height: 78vh;
+  }
+}
+
+.cm-map-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  /* Above Leaflet's panes and controls. */
+  z-index: 1000;
+  font: 600 13px/1 system-ui, sans-serif;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgb(0 0 0 / 0.25);
+  background: #fff;
+  color: #23170c;
+  cursor: pointer;
 }
 
 .cm-map-loading {
@@ -1406,7 +1447,7 @@ input[type='color'] {
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--cm-primary);
+  background: #ffd400;
   border: 2px solid #23170c;
   box-sizing: border-box;
 }
@@ -1415,7 +1456,7 @@ input[type='color'] {
   width: 22px;
   height: 22px;
   background: #fff;
-  border-color: var(--cm-primary);
+  border-color: #ffd400;
   border-width: 4px;
 }
 

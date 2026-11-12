@@ -323,6 +323,8 @@ export const underworldKo = {
   'workplace.mapLoading': '지도를 불러오는 중…',
   'workplace.mapFailed': '지도를 불러오지 못했습니다. 현재 위치나 검색으로 고르세요.',
   'workplace.map': '구역 지도',
+  'workplace.mapExpand': '크게 보기',
+  'workplace.mapCollapse': '작게 보기',
   'workplace.search': '장소 검색',
   'workplace.searchPlaceholder': '주소나 건물 이름',
   'workplace.searchEmpty': '검색 결과가 없습니다.',

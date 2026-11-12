@@ -15,34 +15,40 @@ import { WorkplaceSheet } from '../src/WorkplaceSheet';
 
 // jsdom cannot run Leaflet. The stand-in shows the area, taps a fixed spot, and offers what the real editor's
 // gestures do: tap a vertex, tap an edge's "+" handle, and (for the test) drag two vertices past each other.
+/** Every `area` the map was handed, in order (the real map re-frames when it gets a different one). */
+const mapAreas: WorkplaceMapProps['area'][] = [];
+
 vi.mock('../src/WorkplaceMap', async () => {
   const { insertVertex } = await import('../src/polygonEdit');
   return {
-    WorkplaceMap: ({ area, onPick, onPointsChange, onSelect, labels }: WorkplaceMapProps) => (
-      <div>
-        <button type="button" aria-label={labels.map} onClick={() => onPick({ lat: 37.5, lng: 127.0000004 })}>
-          {!area ? 'none' : area.kind === 'circle' ? `${area.center.lat},${area.center.lng}` : `polygon:${area.points.length}`}
-        </button>
-        {area?.kind === 'polygon' && (
-          <>
-            {area.points.map((_, i) => (
-              <button key={i} type="button" onClick={() => onSelect(i)}>
-                {labels.vertex(i + 1)}
+    WorkplaceMap: ({ area, onPick, onPointsChange, onSelect, labels }: WorkplaceMapProps) => {
+      mapAreas.push(area);
+      return (
+        <div>
+          <button type="button" aria-label={labels.map} onClick={() => onPick({ lat: 37.5, lng: 127.0000004 })}>
+            {!area ? 'none' : area.kind === 'circle' ? `${area.center.lat},${area.center.lng}` : `polygon:${area.points.length}`}
+          </button>
+          {area?.kind === 'polygon' && (
+            <>
+              {area.points.map((_, i) => (
+                <button key={i} type="button" onClick={() => onSelect(i)}>
+                  {labels.vertex(i + 1)}
+                </button>
+              ))}
+              <button type="button" onClick={() => onPointsChange(insertVertex(area.points, 0))}>
+                {labels.insert}
               </button>
-            ))}
-            <button type="button" onClick={() => onPointsChange(insertVertex(area.points, 0))}>
-              {labels.insert}
-            </button>
-            <button
-              type="button"
-              onClick={() => onPointsChange([area.points[0]!, area.points[2]!, area.points[1]!, ...area.points.slice(3)])}
-            >
-              stub:cross
-            </button>
-          </>
-        )}
-      </div>
-    ),
+              <button
+                type="button"
+                onClick={() => onPointsChange([area.points[0]!, area.points[2]!, area.points[1]!, ...area.points.slice(3)])}
+              >
+                stub:cross
+              </button>
+            </>
+          )}
+        </div>
+      );
+    },
   };
 });
 
@@ -98,6 +104,22 @@ describe('workplace picker', () => {
     await user.type(within(dialog).getByLabelText('이름 (선택)'), '  별관 ');
     await user.click(within(dialog).getByRole('button', { name: '이 구역으로' }));
     expect(onApply).toHaveBeenCalledWith({ lat: 37.5, lng: 127, radiusMeters: 200, label: '별관' });
+  });
+
+  it('hands the map the same area until it changes, so the map stays where it was panned', async () => {
+    const { store } = await setup({ adopt: false });
+    const user = userEvent.setup();
+    renderWith(store, <WorkplaceSheet open onOpenChange={() => {}} value={OFFICE} onApply={() => {}} search={async () => []} />);
+    const dialog = screen.getByRole('dialog', { name: '출두 구역 설정' });
+    const map = await within(dialog).findByRole('button', { name: '구역 지도' });
+    const before = mapAreas.at(-1);
+    mapAreas.length = 0;
+    // Re-renders that leave the area alone (here: typing its name).
+    await user.type(within(dialog).getByRole('textbox', { name: '이름 (선택)' }), '2');
+    expect(mapAreas.length).toBeGreaterThan(0);
+    expect(mapAreas.every((a) => a === before)).toBe(true);
+    await user.click(map);
+    expect(mapAreas.at(-1)).not.toBe(before);
   });
 
   it('when the position is unavailable it says so and waits for a pick', async () => {

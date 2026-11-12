@@ -1,7 +1,7 @@
 import type { LatLng } from '@coffee/core';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { canInsertVertex, canRemoveVertex, insertVertex, midpoints, moveVertex, removeVertex } from './polygonEdit';
 
 export type { LatLng };
@@ -19,12 +19,14 @@ export interface WorkplaceMapProps {
   /** Polygon: the vertex the sheet's delete button acts on. */
   selected: number | null;
   onSelect: (index: number | null) => void;
-  labels: { map: string; vertex: (n: number) => string; insert: string };
+  labels: { map: string; vertex: (n: number) => string; insert: string; expand: string; collapse: string };
 }
 
 const TILES = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 const ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-const STROKE = { color: '#f2a65a', weight: 2, fillOpacity: 0.15 };
+/** The chosen area, in a bright yellow that stands out on the map tiles (the vertex handles match, see ui.css). */
+const AREA_COLOR = '#ffd400';
+const STROKE = { color: AREA_COLOR, weight: 3, fillOpacity: 0.3 };
 
 // Handles are 28 px (vertices) and 22 px (insert) so they can be grabbed with a finger; the visible dot is smaller (ui.css).
 const vertexIcon = (selected: boolean) =>
@@ -40,6 +42,9 @@ export function WorkplaceMap({ area, fallback, onPick, onPointsChange, selected,
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const shapes = useRef<L.LayerGroup | null>(null);
+  // The area last brought into view: re-renders that leave it unchanged must not pull the map back to it.
+  const fitted = useRef<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
   // Leaflet handlers are bound once; they read the latest props through this ref.
   const props = useRef({ area, onPick, onPointsChange, onSelect });
   props.current = { area, onPick, onPointsChange, onSelect };
@@ -72,7 +77,7 @@ export function WorkplaceMap({ area, fallback, onPick, onPointsChange, selected,
     let outline: L.Circle | L.Polygon;
     if (area.kind === 'circle') {
       outline = L.circle(area.center, { ...STROKE, radius: area.radiusMeters }).addTo(group);
-      L.circleMarker(area.center, { radius: 6, color: '#23170c', weight: 2, fillColor: '#f2a65a', fillOpacity: 1 }).addTo(group);
+      L.circleMarker(area.center, { radius: 6, color: '#23170c', weight: 2, fillColor: AREA_COLOR, fillOpacity: 1 }).addTo(group);
     } else {
       const polygon = L.polygon(area.points, STROKE).addTo(group);
       outline = polygon;
@@ -107,10 +112,32 @@ export function WorkplaceMap({ area, fallback, onPick, onPointsChange, selected,
         });
       });
     }
-    // Keep the whole area in view when it moves (current location, a search hit, a new shape) or grows.
+    // Keep the whole area in view when it moves (current location, a search hit, a new shape) or grows, but only
+    // then: someone panning elsewhere stays there.
+    const key = JSON.stringify(area);
+    if (key === fitted.current) return;
+    fitted.current = key;
     const bounds = outline.getBounds();
     if (!m.getBounds().contains(bounds)) m.fitBounds(bounds, { padding: [32, 32], maxZoom: 17 });
   }, [area, selected, labels]);
 
-  return <div ref={el} className="cm-map" role="application" aria-label={labels.map} />;
+  // Leaflet measures its container once; tell it the size changed.
+  useEffect(() => {
+    map.current?.invalidateSize();
+  }, [expanded]);
+
+  return (
+    <div className={`cm-map-frame${expanded ? ' is-expanded' : ''}`}>
+      <div ref={el} className="cm-map" role="application" aria-label={labels.map} />
+      <button
+        type="button"
+        className="cm-map-toggle"
+        aria-pressed={expanded}
+        title={expanded ? labels.collapse : labels.expand}
+        onClick={() => setExpanded((x) => !x)}
+      >
+        {expanded ? labels.collapse : labels.expand}
+      </button>
+    </div>
+  );
 }

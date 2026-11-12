@@ -1,6 +1,6 @@
 import { createLedgerStore, createMemoryStores, type Account, type LedgerStore, type RemoteSync } from '@coffee/app';
 import { asPlayerId, type LedgerEvent } from '@coffee/core';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AppShell } from '../src/AppShell';
@@ -110,7 +110,7 @@ describe('opening an invite link', () => {
 });
 
 describe('invite link', () => {
-  it('shows a check next to the copy button after copying', async () => {
+  it('shows a check inside the copy button after copying', async () => {
     const { store } = await viewerStore(GOOGLE, 'B');
     store.setState({ sync: 'synced' });
     const user = userEvent.setup();
@@ -120,7 +120,9 @@ describe('invite link', () => {
       </LedgerProvider>,
     );
     expect(screen.queryByRole('img', { name: '초대 링크를 복사했습니다' })).toBeNull();
-    await user.click(screen.getByRole('button', { name: '링크 복사' }));
-    expect(screen.getByRole('img', { name: '초대 링크를 복사했습니다' })).toBeTruthy();
+    const copy = screen.getByRole('button', { name: '링크 복사' });
+    await user.click(copy);
+    // The check sits inside the button.
+    expect(within(copy).getByRole('img', { name: '초대 링크를 복사했습니다' })).toBeTruthy();
   });
 });
