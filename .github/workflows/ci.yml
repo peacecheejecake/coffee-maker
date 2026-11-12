@@ -24,7 +24,8 @@ jobs:
   # Server rules and multi-device sync against a real local Supabase, plus the app's e2e flows.
   # Screenshot tests (@visual) run in the "visual" job instead.
   integration:
-    runs-on: ubuntu-latest
+    # Not ubuntu-latest: that label moved to 26.04, which Playwright 1.56 cannot install Chromium on.
+    runs-on: ubuntu-24.04
     needs: check
     steps:
       - uses: actions/checkout@v4
