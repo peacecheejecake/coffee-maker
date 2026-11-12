@@ -9,6 +9,7 @@ import { LedgerProvider } from '../src/context';
 import { RecordSheet } from '../src/RecordSheet';
 import { lateSchedule, TierEditor } from '../src/SettingsSheet';
 import { LedgerSheet } from '../src/LedgerSheet';
+import { SpectateForm } from '../src/Motions';
 import type { CupTier } from '@coffee/core';
 
 afterEach(cleanup);
@@ -192,6 +193,45 @@ describe('attendance mode', () => {
     await user.click(screen.getByRole('button', { name: '수정' }));
     expect(Object.values(store.getState().ledger.motions)[0]?.status).toBe('approved');
     expect(store.getState().ledger.towers[asPlayerId('B')]?.cups).toHaveLength(1);
+  });
+});
+
+describe('spectator motion', () => {
+  it('turns picked players into spectators, then back, and keeps spectators from checking in', async () => {
+    let seq = 0;
+    const store = createLedgerStore({
+      ...createMemoryStores(),
+      clock: { now: () => new Date('2026-10-26T00:10:00Z') },
+      newId: () => `id${++seq}`,
+    });
+    await store.getState().createGroup({ ownerName: '지원', appearance: { color: '#f00' }, timeZone: 'Asia/Seoul' });
+    await store.getState().dispatch({ type: 'AddPlayer', id: asPlayerId('B'), name: '민수', appearance: { color: '#0f0' } });
+    const user = userEvent.setup();
+    const B = asPlayerId('B');
+
+    render(
+      <LedgerProvider store={store}>
+        <SpectateForm spectator />
+      </LedgerProvider>,
+    );
+    // The last participant cannot be picked away; 민수 never used the app, so 지원 alone decides.
+    await user.click(screen.getByRole('button', { name: '지원' }));
+    expect(screen.getByRole('alert').textContent).toContain('최소 한 명');
+    expect(screen.getByRole('button', { name: '관전자로 전환' }).hasAttribute('disabled')).toBe(true);
+    await user.click(screen.getByRole('button', { name: '지원' }));
+    await user.click(screen.getByRole('button', { name: '민수' }));
+    await user.click(screen.getByRole('button', { name: '관전자로 전환' }));
+    expect(store.getState().ledger.spectators[B]).toBe(true);
+
+    cleanup();
+    render(
+      <LedgerProvider store={store}>
+        <SpectateForm spectator={false} />
+      </LedgerProvider>,
+    );
+    await user.click(screen.getByRole('button', { name: '민수' }));
+    await user.click(screen.getByRole('button', { name: '복귀' }));
+    expect(store.getState().ledger.spectators[B]).toBeUndefined();
   });
 });
 

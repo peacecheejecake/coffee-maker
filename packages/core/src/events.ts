@@ -33,7 +33,13 @@ export type Motion =
   /** Adds (delta > 0) or removes (delta < 0) cups regardless of any date. */
   | { kind: 'adjust'; playerId: PlayerId; delta: number; reason: string }
   /** One cup paid back by the debtor. */
-  | { kind: 'redeem'; debtorId: PlayerId; recipients: PlayerId[]; stampQuality: StampQuality; evidence?: { assetId: string } };
+  | { kind: 'redeem'; debtorId: PlayerId; recipients: PlayerId[]; stampQuality: StampQuality; evidence?: { assetId: string } }
+  /**
+   * Moves `playerIds` between participant and spectator (ADR 0004). A spectator keeps their tower and still
+   * sees everything, but is not judged, charged or asked to vote. `forgive` also wipes the cups they still
+   * owe when turning them into spectators.
+   */
+  | { kind: 'spectate'; playerIds: PlayerId[]; spectator: boolean; forgive?: boolean };
 
 export type MotionKind = Motion['kind'];
 
