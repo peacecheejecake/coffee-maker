@@ -1,4 +1,5 @@
 import {
+  isSpectator,
   isSoloMember,
   lateRecordsOf,
   minutesBetween,
@@ -61,6 +62,7 @@ function LedgerBody({ playerId, onCorrect, onOpenBallots, proposeFor }: LedgerSh
           title: t(`grade.${stats.grade}`),
         })}
         {stats.overpaid > 0 && <span className="cm-muted"> · {t('ledger.overpaid', { count: stats.overpaid })}</span>}
+        {isSpectator(ledger, playerId) && <span className="cm-badge"> {t('spectate.badge')}</span>}
       </p>
       <AdjustToggle playerId={playerId} />
       <RedemptionList playerId={playerId} />

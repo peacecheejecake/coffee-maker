@@ -37,4 +37,12 @@ describe('toSceneModel', () => {
     const archived = { ...state, players: { ...state.players, [id]: { ...state.players[id]!, archived: true } } };
     expect(toSceneModel(archived, TODAY).towers.map((t) => t.name)).not.toContain('지원');
   });
+
+  it('keeps spectators on stage with a caption', () => {
+    const id = asPlayerId('demo-p2');
+    const watching = { ...state, spectators: { [id]: true as const } };
+    const towers = toSceneModel(watching, TODAY, null, { spectator: '관전' }).towers;
+    expect(towers.find((t) => t.name === '민수')).toMatchObject({ tag: '관전', cups: { length: 7 } });
+    expect(towers.filter((t) => t.tag !== undefined).map((t) => t.name)).toEqual(['민수']);
+  });
 });

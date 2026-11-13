@@ -1,4 +1,4 @@
-import { ranking } from '@coffee/core';
+import { isSpectator, ranking } from '@coffee/core';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { SceneSlotProps } from './AppShell';
 import { useLedger, useT } from './context';
@@ -37,7 +37,10 @@ export function TvShell({ renderScene }: { renderScene: (p: SceneSlotProps) => R
           {board.map(({ player, outstanding }) => (
             <li key={player.id} className={player.id === focusId ? 'is-focus' : ''}>
               <span className="cm-dot" style={{ background: player.appearance.color }} aria-hidden />
-              <span className="cm-tv-name">{player.name}</span>
+              <span className="cm-tv-name">
+                {player.name}
+                {isSpectator(ledger, player.id) && <span className="cm-badge"> {t('spectate.badge')}</span>}
+              </span>
               <span className="cm-tv-cups">☕ {outstanding}</span>
             </li>
           ))}

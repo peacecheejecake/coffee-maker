@@ -2,6 +2,7 @@ import {
   activePlayers,
   creditGrade,
   cupAge,
+  isSpectator,
   outstanding,
   playerStats,
   streak,
@@ -12,8 +13,19 @@ import {
 } from '@coffee/core';
 import type { SceneModel } from '@coffee/scene';
 
+/** Words the scene prints but cannot translate itself. */
+export interface SceneLabels {
+  /** Caption above a spectator's plaque. */
+  spectator: string;
+}
+
 /** Maps ledger state to what the 3D scene draws. The scene never sees domain types. */
-export function toSceneModel(state: LedgerState, today: WorkDate, focusId: string | null = null): SceneModel {
+export function toSceneModel(
+  state: LedgerState,
+  today: WorkDate,
+  focusId: string | null = null,
+  labels: SceneLabels = { spectator: '관전 중' },
+): SceneModel {
   const players = activePlayers(state);
   const top = Math.max(0, ...players.map((p) => outstanding(state, p.id)));
   const open = state.proposalOrder.flatMap((id) => {
@@ -47,6 +59,7 @@ export function toSceneModel(state: LedgerState, today: WorkDate, focusId: strin
         ballot: ballotOf(p.id),
         lotus: cups.length === 0 && playerStats(state, p.id).cupsRedeemed > 0,
         streak: streak(state, p.id),
+        ...(isSpectator(state, p.id) && { tag: labels.spectator }),
       };
     }),
   };

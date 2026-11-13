@@ -12,6 +12,7 @@ export const underworldKo = {
   'hud.towers': '업보 탑 목록',
   'scene.reload': '저승 무대 다시 불러오기',
   'hud.tower': '{name}의 업보 탑, 미상환 {outstanding}잔',
+  'hud.towerSpectator': '{name}의 업보 탑, 미상환 {outstanding}잔, 관전 중',
   'action.record': '업보 청구',
   'action.settings': '공사 규정',
   'action.close': '닫기',
@@ -396,6 +397,7 @@ export const underworldKo = {
   'spectate.returnSubmitSolo': '복귀',
   'spectate.lastOne': '참가자가 최소 한 명은 남아야 합니다.',
   'spectate.badge': '👀 관전',
+  'spectate.tag': '관전 중',
 
   'calendar.title': '일정',
   'calendar.open': '일정',
