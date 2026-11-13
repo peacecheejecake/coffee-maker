@@ -45,6 +45,21 @@ export function Tower({ placed, fontUrl, onSelect }: TowerProps) {
           >
             {tower.grade}
           </Text>
+          {tower.tag && (
+            <Text
+              font={fontUrl}
+              fontSize={0.14}
+              maxWidth={1.2}
+              position={[0, PLAQUE.size[1] / 2 + 0.11, PLAQUE.size[2] / 2 + 0.005]}
+              color={PALETTE.spectator}
+              outlineWidth={0.018}
+              outlineColor={PALETTE.plaque}
+              anchorX="center"
+              anchorY="middle"
+            >
+              {tower.tag}
+            </Text>
+          )}
         </Suspense>
       </group>
 

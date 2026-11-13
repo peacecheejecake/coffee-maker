@@ -1,4 +1,4 @@
-import { activePlayers, awaitingReceipt, ballotsFor, motionBallotsFor, outstanding, type EventId, type PlayerId } from '@coffee/core';
+import { activePlayers, awaitingReceipt, ballotsFor, isSpectator, motionBallotsFor, outstanding, type EventId, type PlayerId } from '@coffee/core';
 import { useState, type ReactNode } from 'react';
 import { CheckInButton, useSettleAttendance, useWorkplaceWatch } from './Attendance';
 import { BallotsSheet } from './BallotsSheet';
@@ -88,7 +88,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
           {activePlayers(ledger).map((p) => (
             <li key={p.id}>
               <button type="button" onClick={() => setSheet({ kind: 'ledger', playerId: p.id })}>
-                {t('hud.tower', { name: p.name, outstanding: outstanding(ledger, p.id) })}
+                {t(isSpectator(ledger, p.id) ? 'hud.towerSpectator' : 'hud.tower', { name: p.name, outstanding: outstanding(ledger, p.id) })}
               </button>
             </li>
           ))}

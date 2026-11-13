@@ -29,6 +29,8 @@ export interface TowerView {
   lotus?: boolean;
   /** Latest run of recorded days: 3+ late days set the pedestal on fire, 3+ on-time days sparkle. */
   streak?: { kind: 'late' | 'onTime' | 'none'; count: number };
+  /** Short caption floating above the plaque, e.g. "관전 중" for a spectator. */
+  tag?: string;
 }
 
 export interface SceneModel {

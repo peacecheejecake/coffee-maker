@@ -25,7 +25,7 @@ function rng(seed: number) {
   };
 }
 
-/** Initial control values can come from the URL (e2e screenshots): ?players=8&maxCups=40&uniform=1&seed=3&profile=1&hud=0 */
+/** Initial control values can come from the URL (e2e screenshots): ?players=8&maxCups=40&uniform=1&seed=3&spectators=2&profile=1&hud=0 */
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
 const flag = (k: string) => params.get(k) === '1';
@@ -41,6 +41,7 @@ export function Sandbox() {
     uniformCups: flag('uniform'),
     seed: { value: num('seed', 1), min: 1, max: 999, step: 1 },
     longNames: flag('longNames'),
+    spectators: { value: num('spectators', 0), min: 0, max: 20, step: 1 },
     profile: { value: flag('profile'), label: 'frameloop=always' },
     speed: { value: 1, min: 0.1, max: 3, step: 0.1 },
     reducedMotion: flag('reduced'),
@@ -75,10 +76,11 @@ export function Sandbox() {
           receivedCount: 0,
           crowned: top > 0 && list.length === top,
           ballot: null,
+          ...(i < c.spectators && { tag: '관전 중' }),
         }),
       ),
     };
-  }, [cups, c.longNames, focusId]);
+  }, [cups, c.longNames, c.spectators, focusId]);
 
   // Triggers mutate the cups and enqueue the matching scene events, like the real ledger mapping does.
   const cupsRef = useRef(cups);

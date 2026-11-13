@@ -23,6 +23,8 @@ export const PALETTE = {
   ground: '#3b2b3e',
   review: '#b59cff',
   lotus: '#f7a8c8',
+  /** Caption over a spectator's plaque: the cool "just watching" tone. */
+  spectator: '#7fd8ff',
 } as const;
 
 export const GRADE_COLORS = {

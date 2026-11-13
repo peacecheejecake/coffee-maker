@@ -66,15 +66,16 @@ function SceneView({ focusId, focusDesk, onSelectTower, controls = false }: Scen
   const groupId = useLedger((s) => s.groupId);
   const wallNow = useLedger((s) => s.wallNow);
   const today = wallNow().workDate;
+  const { sfx, t } = useUi();
+  const spectatorTag = t('spectate.tag');
   const model = useMemo(
-    () => ({ ...toSceneModel(ledger, today, focusId), focusDesk }),
-    [ledger, today, focusId, focusDesk],
+    () => ({ ...toSceneModel(ledger, today, focusId, { spectator: spectatorTag }), focusDesk }),
+    [ledger, today, focusId, focusDesk, spectatorTag],
   );
   const { queue, consume } = useSceneEvents(groupId, ledger, events);
   const [animating, setAnimating] = useState(false);
   const [reaperReady, setReaperReady] = useState(false);
   const markReaperReady = useCallback(() => setReaperReady(true), []);
-  const { sfx, t } = useUi();
   const minutes = toMinutes(wallNow().hhmm);
   const start = toMinutes(currentRuleset(ledger).defaultStartTime);
   const timeOfDay: TimeOfDay = minutes < 11 * 60 ? 'morning' : minutes < 17 * 60 ? 'day' : 'evening';

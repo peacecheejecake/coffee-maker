@@ -222,7 +222,7 @@ export function TowerScene({
           )}
           <IdleTicker enabled={idle && frameloop === 'demand'} />
           {placed.map((p) => (
-            <Tower key={p.tower.id} placed={p} fontUrl={fontFor(p.tower.name)} onSelect={select} />
+            <Tower key={p.tower.id} placed={p} fontUrl={fontFor(p.tower.name + (p.tower.tag ?? ''))} onSelect={select} />
           ))}
           <FxLayer fx={fx} ghosts={ghosts} />
           <Runner
