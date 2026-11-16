@@ -149,6 +149,15 @@
   .cm-hud-top .cm-row {
     gap: 6px;
   }
+  /* The title is only the skull on phones; screen readers still hear the whole name. */
+  .cm-sr-narrow {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
 }
 
 /* ── Buttons & inputs ────────────────────────────────────── */

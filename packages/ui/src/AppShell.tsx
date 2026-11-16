@@ -101,7 +101,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
       <div className="cm-hud">
         <div className="cm-hud-top">
           <h1 className="cm-pill">
-            💀 {t('app.title')}
+            💀 <span className="cm-sr-narrow">{t('app.title')}</span>
             {sync !== 'local' && (
               <span className={`cm-sync is-${sync}`} role="status" aria-label={t(`sync.${sync}`)} title={t(`sync.${sync}`)} />
             )}
