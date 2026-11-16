@@ -13,14 +13,16 @@ import {
   type Player,
   type Ruleset,
   type Workplace,
+  type WorkDate,
 } from '@coffee/core';
 import type { Tone } from '@coffee/theme';
 import { useEffect, useMemo, useState } from 'react';
 import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
 import { formatWorkDate } from './format';
 import { GroupSection } from './GroupSettings';
-import { useMotionFeedback } from './Motions';
+import { SpectateForm, useMotionFeedback } from './Motions';
 import { ColorDot, ConfirmBox, Field, Segmented, Sheet, Stepper } from './primitives';
+import { RELEASES } from './releases';
 import { WorkplaceSheet } from './WorkplaceSheet';
 
 export const PALETTE_CHOICES = ['#e57373', '#64b5f6', '#81c784', '#ffb74d', '#ba68c8', '#4dd0e1', '#f06292', '#aed581', '#ffd54f', '#90a4ae'];
@@ -32,14 +34,48 @@ export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenCha
       {open && (
         <div className="cm-stack">
           <InviteSection />
-          <AccountSection />
           <GroupSection />
           <RulesEditor />
           <PlayersEditor />
-          <DeviceSection />
         </div>
       )}
     </Sheet>
+  );
+}
+
+/** What belongs to the person and this device rather than to the group: sign-in, groups, tone, alerts. */
+export function AccountSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+  const t = useT();
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange} title={t('account.title')}>
+      {open && (
+        <div className="cm-stack">
+          <AccountSection />
+          <DeviceSection />
+          <UpdatesSection />
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+/** Release notes, newest open; older ones fold away. */
+function UpdatesSection() {
+  const t = useT();
+  return (
+    <section className="cm-section" aria-labelledby="updates-h">
+      <h3 id="updates-h">{t('settings.updates')}</h3>
+      {RELEASES.map((r, i) => (
+        <details key={r.date} className="cm-details" open={i === 0}>
+          <summary>{formatWorkDate(r.date as WorkDate)}</summary>
+          <ul className="cm-release-notes">
+            {r.notes.map((n) => (
+              <li key={n}>{n}</li>
+            ))}
+          </ul>
+        </details>
+      ))}
+    </section>
   );
 }
 
@@ -334,61 +370,108 @@ export function TierEditor({ tiers, onChange }: { tiers: CupTier[]; onChange: (t
 
 function PlayersEditor() {
   const t = useT();
-  const run = useCommand();
   const ledger = useLedger((s) => s.ledger);
   const me = useLedger((s) => s.me);
   const players = activePlayers(ledger);
+  const participants = players.filter((p) => !isSpectator(ledger, p.id));
+  const spectators = players.filter((p) => isSpectator(ledger, p.id));
   const isOwner = !!me && ledger.players[me]?.role === 'owner';
-  const [name, setName] = useState('');
-  const [color, setColor] = useState(PALETTE_CHOICES[players.length % PALETTE_CHOICES.length]!);
+  const [adding, setAdding] = useState(false);
+  const row = (p: Player) => <PlayerRow key={p.id} player={p} canEdit={isOwner || p.id === me} canArchive={isOwner && p.id !== me} />;
 
-  async function add() {
-    const d = await run({ type: 'AddPlayer', name, appearance: { color } });
-    if (d.ok) {
-      setName('');
-      setColor(PALETTE_CHOICES[(players.length + 1) % PALETTE_CHOICES.length]!);
-    }
-  }
-
-  // Every row, the header and the add form share one column template (.cm-player-row), so fields line up.
+  // Every row and the header share one column template (.cm-player-row), so fields line up.
   return (
     <section className="cm-section" aria-labelledby="players-h">
       <h3 id="players-h">{t('settings.players')}</h3>
       <div className="cm-player-row cm-player-head" aria-hidden>
         <span />
         <span>{t('settings.playerName')}</span>
-        <span>{t('settings.playerColor')}</span>
         <span>{t('settings.playerStart')}</span>
         <span />
       </div>
-      <ul className="cm-list">
-        {players.map((p) => (
-          <PlayerRow key={p.id} player={p} canEdit={isOwner || p.id === me} canArchive={isOwner && p.id !== me} />
-        ))}
-      </ul>
-      <form
-        className="cm-player-row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void add();
-        }}
-      >
-        <ColorDot color={color} />
-        <input
-          className="cm-input"
-          required
-          maxLength={20}
-          placeholder={t('settings.playerName')}
-          aria-label={t('settings.playerName')}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <input type="color" aria-label={t('settings.playerColor')} value={color} onChange={(e) => setColor(e.target.value)} />
-        <button type="submit" className="cm-button cm-player-add" disabled={!name.trim()}>
+      <ul className="cm-list">{participants.map(row)}</ul>
+      {adding ? (
+        <AddPlayerForm next={players.length} onDone={() => setAdding(false)} />
+      ) : (
+        <button type="button" className="cm-button cm-button-dashed" onClick={() => setAdding(true)}>
           + {t('settings.addPlayer')}
         </button>
-      </form>
+      )}
+      {/* Spectators exist only where people check themselves in (ADR 0004); leftovers from that mode still show. */}
+      {(ledger.mode === 'attendance' || spectators.length > 0) && (
+        <div className="cm-subsection" role="group" aria-labelledby="spectators-h">
+          <h4 id="spectators-h">
+            {t('settings.spectators')} <span className="cm-muted">{spectators.length}</span>
+          </h4>
+          {spectators.length === 0 ? (
+            <p className="cm-muted">{t('settings.noSpectators')}</p>
+          ) : (
+            <ul className="cm-list">{spectators.map(row)}</ul>
+          )}
+          {ledger.mode === 'attendance' && !!me && (
+            <>
+              <SpectateForm spectator />
+              <SpectateForm spectator={false} />
+            </>
+          )}
+        </div>
+      )}
     </section>
+  );
+}
+
+function AddPlayerForm({ next, onDone }: { next: number; onDone: () => void }) {
+  const t = useT();
+  const run = useCommand();
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(PALETTE_CHOICES[next % PALETTE_CHOICES.length]!);
+
+  async function add() {
+    const d = await run({ type: 'AddPlayer', name, appearance: { color } });
+    if (!d.ok) return;
+    // Stays open for the next name: groups are usually filled in one go.
+    setName('');
+    setColor(PALETTE_CHOICES[(next + 1) % PALETTE_CHOICES.length]!);
+  }
+
+  return (
+    <form
+      className="cm-player-row cm-player-new"
+      aria-label={t('settings.addPlayer')}
+      onSubmit={(e) => {
+        e.preventDefault();
+        void add();
+      }}
+    >
+      <ColorPicker color={color} onChange={setColor} />
+      <input
+        className="cm-input"
+        required
+        autoFocus
+        maxLength={20}
+        placeholder={t('settings.playerName')}
+        aria-label={t('settings.playerName')}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <button type="submit" className="cm-button cm-button-primary" disabled={!name.trim()}>
+        {t('settings.addPlayerSubmit')}
+      </button>
+      <button type="button" className="cm-icon-button" aria-label={t('action.cancel')} onClick={onDone}>
+        ✕
+      </button>
+    </form>
+  );
+}
+
+/** The row's color dot doubles as the color input, so color needs no column of its own. */
+function ColorPicker({ color, onChange, disabled }: { color: string; onChange: (c: string) => void; disabled?: boolean }) {
+  const t = useT();
+  if (disabled) return <ColorDot color={color} />;
+  return (
+    <label className="cm-dot cm-dot-picker" style={{ background: color }} title={t('settings.playerColor')}>
+      <input type="color" aria-label={t('settings.playerColor')} value={color} onChange={(e) => onChange(e.target.value)} />
+    </label>
   );
 }
 
@@ -399,7 +482,6 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
   const [color, setColor] = useState(player.appearance.color);
   const [start, setStart] = useState(player.startTimeOverride ?? '');
   const [confirmArchive, setConfirmArchive] = useState(false);
-  const spectating = useLedger((s) => isSpectator(s.ledger, player.id));
   const dirty = name !== player.name || color !== player.appearance.color || start !== (player.startTimeOverride ?? '');
   const revert = () => {
     setName(player.name);
@@ -410,7 +492,7 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
   return (
     <li className="cm-player-item">
       <div className="cm-player-row">
-        <ColorDot color={color} />
+        <ColorPicker color={color} onChange={setColor} disabled={!canEdit} />
         <input
           className="cm-input"
           aria-label={t('settings.playerName')}
@@ -419,7 +501,6 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
           maxLength={20}
           onChange={(e) => setName(e.target.value)}
         />
-        <input type="color" aria-label={t('settings.playerColor')} disabled={!canEdit} value={color} onChange={(e) => setColor(e.target.value)} />
         <input
           type="time"
           className="cm-input"
@@ -467,7 +548,6 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
           </button>
         </div>
       )}
-      {spectating && <span className="cm-badge">{t('spectate.badge')}</span>}
       {confirmArchive && (
         <div className="cm-warning" role="alert">
           <p>

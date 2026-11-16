@@ -98,6 +98,8 @@ test('offline edits are queued and delivered on reconnect', async ({ browser }) 
 });
 
 test('a unanimous waiver across three devices', async ({ browser }) => {
+  // Three software-rendered scenes at once: the steps alone have taken more than the default 60s on CI.
+  test.slow();
   const a = await newDevice(browser);
   const b = await newDevice(browser);
   const c = await newDevice(browser);

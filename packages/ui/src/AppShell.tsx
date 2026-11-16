@@ -12,7 +12,8 @@ import { Onboarding } from './Onboarding';
 import { RecordSheet } from './RecordSheet';
 import { RedeemSheet } from './RedeemSheet';
 import { peekGroup, setPeekGroup } from './session';
-import { SettingsSheet } from './SettingsSheet';
+import { HistorySheet } from './HistorySheet';
+import { AccountSheet, SettingsSheet } from './SettingsSheet';
 import { Toasts } from './Toasts';
 
 type SheetState =
@@ -23,7 +24,9 @@ type SheetState =
   | { kind: 'ballots' }
   | { kind: 'redeem' }
   | { kind: 'calendar' }
-  | { kind: 'settings' };
+  | { kind: 'history' }
+  | { kind: 'settings' }
+  | { kind: 'account' };
 
 export interface SceneSlotProps {
   focusId: string | null;
@@ -98,7 +101,7 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
       <div className="cm-hud">
         <div className="cm-hud-top">
           <h1 className="cm-pill">
-            💀 {t('app.title')}
+            💀 <span className="cm-sr-narrow">{t('app.title')}</span>
             {sync !== 'local' && (
               <span className={`cm-sync is-${sync}`} role="status" aria-label={t(`sync.${sync}`)} title={t(`sync.${sync}`)} />
             )}
@@ -113,12 +116,27 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
             >
               📅 <span className="cm-hide-narrow">{t('calendar.open')}</span>
             </button>
+            <button
+              type="button"
+              className="cm-pill cm-pill-button"
+              aria-label={t('history.open')}
+              title={t('history.open')}
+              onClick={() => setSheet({ kind: 'history' })}
+            >
+              🗂 <span className="cm-hide-narrow">{t('history.open')}</span>
+            </button>
             {!viewer && (
               <>
-                <button type="button" className="cm-pill cm-pill-button" onClick={() => setSheet({ kind: 'ballots' })}>
-                  ⚖️ {t('hud.ballots')}
+                <button
+                  type="button"
+                  className="cm-pill cm-pill-button"
+                  aria-label={ballots > 0 ? `${t('hud.ballots')} ${ballots}` : t('hud.ballots')}
+                  title={t('hud.ballots')}
+                  onClick={() => setSheet({ kind: 'ballots' })}
+                >
+                  ⚖️ <span className="cm-hide-narrow">{t('hud.ballots')}</span>
                   {ballots > 0 && (
-                    <span className="cm-count" aria-label={`${ballots}`}>
+                    <span className="cm-count" aria-hidden>
                       {ballots}
                     </span>
                   )}
@@ -127,10 +145,19 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
                   type="button"
                   className="cm-pill cm-pill-button"
                   aria-label={t('action.settings')}
-                  title={t('hud.me', { name: meName })}
+                  title={t('action.settings')}
                   onClick={() => setSheet({ kind: 'settings' })}
                 >
-                  ⚙️ <span className="cm-hide-narrow">{meName}</span>
+                  ⚙️ <span className="cm-hide-narrow">{t('action.settings')}</span>
+                </button>
+                <button
+                  type="button"
+                  className="cm-pill cm-pill-button"
+                  aria-label={t('action.account')}
+                  title={t('hud.me', { name: meName })}
+                  onClick={() => setSheet({ kind: 'account' })}
+                >
+                  👤 <span className="cm-hide-narrow">{meName}</span>
                 </button>
               </>
             )}
@@ -183,7 +210,9 @@ export function AppShell({ renderScene, onDemo }: { renderScene: (p: SceneSlotPr
       <BallotsSheet open={sheet.kind === 'ballots'} onOpenChange={(o) => !o && close()} />
       <RedeemSheet open={sheet.kind === 'redeem'} onOpenChange={(o) => !o && close()} />
       <CalendarSheet open={sheet.kind === 'calendar'} onOpenChange={(o) => !o && close()} />
+      <HistorySheet open={sheet.kind === 'history'} onOpenChange={(o) => !o && close()} />
       <SettingsSheet open={sheet.kind === 'settings'} onOpenChange={(o) => !o && close()} />
+      <AccountSheet open={sheet.kind === 'account'} onOpenChange={(o) => !o && close()} />
       <Toasts />
       <FeedToasts />
     </>

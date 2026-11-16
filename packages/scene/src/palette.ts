@@ -24,7 +24,9 @@ export const PALETTE = {
   review: '#b59cff',
   lotus: '#f7a8c8',
   /** Caption over a spectator's plaque: the cool "just watching" tone. */
-  spectator: '#7fd8ff',
+  spectator: '#1f5f8b',
+  /** Translucent pill behind that caption. */
+  tagBackdrop: '#ffffff',
 } as const;
 
 export const GRADE_COLORS = {
