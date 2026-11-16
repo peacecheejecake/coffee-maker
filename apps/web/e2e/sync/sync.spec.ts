@@ -107,8 +107,9 @@ test('a unanimous waiver across three devices', async ({ browser }) => {
   const url = await inviteLink(a.page);
   await joinAs(b.page, url, '민수');
   await joinAs(c.page, url, '하나');
-  // Live, from C's device; three software-rendered scenes at once make it slow on CI.
-  await expect(towerLabel(a.page, '하나', 0)).toHaveCount(1, { timeout: 15_000 });
+  // Live, from C's device. With three software-rendered scenes, CI has taken more than 15s for one hop.
+  const live = { timeout: 30_000 };
+  await expect(towerLabel(a.page, '하나', 0)).toHaveCount(1, live);
 
   await recordLate(a.page, '민수', '09:30');
   const ledger = await openLedger(a.page, '민수');
@@ -118,13 +119,14 @@ test('a unanimous waiver across three devices', async ({ browser }) => {
   await ledger.getByRole('button', { name: '심의에 부치기' }).click();
   await a.page.keyboard.press('Escape');
 
-  await expect(c.page.getByText('지원님이 민수의 탕감 심의를 발의했습니다')).toBeVisible({ timeout: 15_000 });
+  // The ballot itself, not the arrival toast: a toast can come and go while the page is busy rendering.
   await c.page.getByRole('button', { name: /심의함/ }).click();
-  await c.page.getByRole('dialog', { name: '탕감 심의위원회' }).getByRole('button', { name: '탕감 찬성' }).click();
-  await expect(c.page.getByText('만장일치. 업보가 탕감되었습니다')).toBeVisible({ timeout: 15_000 });
+  const ballots = c.page.getByRole('dialog', { name: '탕감 심의위원회' });
+  await ballots.getByRole('button', { name: '탕감 찬성' }).click(live);
+  await expect(c.page.getByText('만장일치. 업보가 탕감되었습니다')).toBeVisible(live);
   await c.page.keyboard.press('Escape');
 
-  for (const d of [a, b, c]) await expect(towerLabel(d.page, '민수', 0)).toHaveCount(1);
+  for (const d of [a, b, c]) await expect(towerLabel(d.page, '민수', 0)).toHaveCount(1, live);
   for (const d of [a, b, c]) await d.context.close();
 });
 
