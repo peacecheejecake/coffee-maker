@@ -12,7 +12,8 @@ export default defineConfig({
       strategies: 'injectManifest',
       srcDir: 'src',
       filename: 'sw.ts',
-      registerType: 'autoUpdate',
+      // 'prompt': the page picks the moment to switch (src/swUpdate.ts) instead of reloading under someone's feet.
+      registerType: 'prompt',
       injectRegister: false,
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,woff,png,svg,glb}'],
