@@ -3,12 +3,14 @@
  *
  * A new service worker waits while any tab of the old version is open, and an open tab never asks for one,
  * so without this people kept seeing the old screens until every window was closed. Here an open tab asks
- * for a new version every minute and whenever it comes back to the foreground. Once one is installed, the
+ * for a new version every ten minutes and whenever it comes back to the foreground. Once one is installed, the
  * page switches to it and reloads at the first moment that loses nothing: no sheet open and nothing being
  * typed, or the app out of sight.
  */
 
-const CHECK_EVERY_MS = 60_000;
+// Phones mostly catch a deploy on coming back to the app; the timer is for screens left open (desktop tabs,
+// /tv), where a few minutes late is fine. A check is one conditional request (304 when nothing changed).
+const CHECK_EVERY_MS = 10 * 60_000;
 const RETRY_SAFE_MS = 2_000;
 
 /** True when reloading now would throw away what someone is doing on screen. */

@@ -31,7 +31,7 @@ function deploy(tag: string) {
   writeFileSync(SW, `${original}\n// e2e deploy ${tag}\n`);
 }
 
-/** What the page's own minute timer does, without the minute. */
+/** What the page's own ten-minute timer does, without the wait. */
 const checkForUpdate = (page: Page) => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.update());
 /** False while the reload is still under way (the old page's context goes away mid-call). */
 const reloaded = (page: Page) => page.evaluate(() => window.__before === undefined).catch(() => false);
