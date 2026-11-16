@@ -34,6 +34,14 @@ test('onboarding, main screen and sheets have no serious accessibility violation
   expect(await audit(page)).toEqual([]);
   await page.keyboard.press('Escape');
 
+  await page.getByRole('button', { name: '계정', exact: true }).click();
+  expect(await audit(page)).toEqual([]);
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('button', { name: '이력' }).click();
+  expect(await audit(page)).toEqual([]);
+  await page.keyboard.press('Escape');
+
   await page.getByRole('button', { name: /상환 창구/ }).click();
   expect(await audit(page)).toEqual([]);
 });

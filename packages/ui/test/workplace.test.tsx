@@ -8,7 +8,7 @@ import { CheckInButton, useWorkplaceWatch } from '../src/Attendance';
 import { motionTitle } from '../src/Motions';
 import { insertVertex, removeVertex } from '../src/polygonEdit';
 import { LedgerProvider } from '../src/context';
-import { SettingsSheet } from '../src/SettingsSheet';
+import { AccountSheet, SettingsSheet } from '../src/SettingsSheet';
 import { Toasts } from '../src/Toasts';
 import type { WorkplaceMapProps } from '../src/WorkplaceMap';
 import { WorkplaceSheet } from '../src/WorkplaceSheet';
@@ -293,7 +293,7 @@ describe('check-in inside the workplace', () => {
   it('auto check-in can be switched on in the device settings once the rules set a workplace', async () => {
     const { store } = await setup({ workplace: OFFICE });
     const user = userEvent.setup();
-    renderWith(store, <SettingsSheet open onOpenChange={() => {}} />);
+    renderWith(store, <AccountSheet open onOpenChange={() => {}} />);
     const auto = screen.getByRole('radiogroup', { name: '자동 출두 체크' });
     // The field's <label> also names the first option, so it is found by position.
     const on = within(auto).getAllByRole('radio')[0]!;

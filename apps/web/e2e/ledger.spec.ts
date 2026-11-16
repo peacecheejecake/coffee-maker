@@ -140,7 +140,7 @@ test('a correction down to zero cups is redirected to a waiver', async ({ page }
 
 test('plain tone switches wording', async ({ page }) => {
   await createGroup(page, '지원');
-  await page.getByRole('button', { name: '공사 규정' }).click();
+  await page.getByRole('button', { name: '계정', exact: true }).click();
   await page.getByRole('radio', { name: '일반' }).click();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('button', { name: /지각 기록/ })).toBeVisible();

@@ -57,8 +57,9 @@ export async function createGroup(page: Page, name: string, mode: 'shared' | 'at
 
 export async function addPlayer(page: Page, name: string) {
   await page.getByRole('button', { name: '공사 규정' }).click();
-  await page.getByPlaceholder('이름').fill(name);
   await page.getByRole('button', { name: '+ 채무자 추가' }).click();
+  await page.getByPlaceholder('이름').fill(name);
+  await page.getByRole('button', { name: '추가', exact: true }).click();
   await page.keyboard.press('Escape');
 }
 
@@ -82,7 +83,7 @@ export async function openLedger(page: Page, name: string) {
 }
 
 export async function switchUser(page: Page, name: string) {
-  await page.getByRole('button', { name: '공사 규정' }).click();
+  await page.getByRole('button', { name: '계정', exact: true }).click();
   await page.getByLabel('이 기기를 쓰는 사람').selectOption({ label: name });
   await page.keyboard.press('Escape');
 }

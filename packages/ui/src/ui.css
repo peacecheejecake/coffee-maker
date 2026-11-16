@@ -141,6 +141,14 @@
   .cm-pill {
     font-size: 13px;
   }
+  /* Icon-only on phones, so the title keeps as much room as the five menus allow. */
+  .cm-hud-top .cm-pill-button {
+    padding: 8px 10px;
+    gap: 4px;
+  }
+  .cm-hud-top .cm-row {
+    gap: 6px;
+  }
 }
 
 /* ── Buttons & inputs ────────────────────────────────────── */
@@ -741,6 +749,15 @@ input[type='color'] {
   margin-bottom: 10px;
 }
 
+.cm-release-notes {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
 /* ── Lists ───────────────────────────────────────────────── */
 
 .cm-list {
@@ -804,6 +821,11 @@ input[type='color'] {
   color: var(--cm-text-dim);
 }
 
+.cm-badge-ok {
+  background: rgb(111 207 151 / 0.18);
+  color: #8fe0b0;
+}
+
 .cm-badge-review {
   background: rgb(181 156 255 / 0.2);
   color: var(--cm-review);
@@ -811,6 +833,30 @@ input[type='color'] {
 
 .cm-cups {
   font-variant-numeric: tabular-nums;
+}
+
+/* Group history: time, what happened, and where a proposal ended up. */
+.cm-history-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--cm-surface);
+  border: 1px solid var(--cm-border);
+  font-size: 14px;
+}
+
+.cm-history-at {
+  font-size: 12px;
+  color: var(--cm-text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.cm-history-text {
+  overflow-wrap: anywhere;
 }
 
 .cm-history {
@@ -867,7 +913,7 @@ input[type='color'] {
 /* One column template for the header, every member row and the add form, so each field lines up. */
 .cm-player-row {
   display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) 44px 108px 40px;
+  grid-template-columns: 20px minmax(0, 1fr) 108px 40px;
   align-items: center;
   gap: 8px;
 }
@@ -878,9 +924,60 @@ input[type='color'] {
   margin-bottom: -6px;
 }
 
-/* The add button takes the start-time and remove columns. */
-.cm-player-add {
-  grid-column: span 2;
+/* The new-member form: the submit button sits in the start-time column, cancel in the remove column. */
+.cm-player-new {
+  padding-top: 4px;
+}
+
+.cm-player-row > .cm-dot {
+  justify-self: center;
+}
+
+/* The color dot is the color input: the native picker is invisible but still focusable and clickable. */
+.cm-dot-picker {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px var(--cm-border);
+}
+
+.cm-dot-picker input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+
+.cm-dot-picker:focus-within {
+  outline: 2px solid var(--cm-primary);
+  outline-offset: 2px;
+}
+
+/* A full-width "add" row, lighter than a regular button so it reads as a placeholder for the next row. */
+.cm-button-dashed {
+  width: 100%;
+  border: 1px dashed rgb(255 255 255 / 0.24);
+  background: transparent;
+  color: var(--cm-text-dim);
+}
+
+.cm-subsection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--cm-border);
+}
+
+.cm-subsection h4 {
+  margin: 0;
+  font-size: 14px;
 }
 
 .cm-player-actions {
