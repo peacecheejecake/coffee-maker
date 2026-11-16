@@ -7,6 +7,7 @@ import { App } from './App';
 import { config, syncEnabled } from './config';
 import { AUTH_CALLBACK_URL, createNativePlatform, createNativePush, initNativeShell, isNative, openAuthPage } from './native';
 import { createBrowserPush } from './push';
+import { registerServiceWorker } from './swUpdate';
 import './styles.css';
 
 // Composition root: the only place that picks concrete adapters.
@@ -34,11 +35,9 @@ void store
   .init()
   .then(() => startSync(store));
 
-// Service worker: offline app shell + push notifications. Production web only: the native shell already
-// bundles the app, and dev serves modules unbundled.
-if (import.meta.env.PROD && !isNative() && 'serviceWorker' in navigator) {
-  void import('virtual:pwa-register').then(({ registerSW }) => registerSW({ immediate: true }));
-}
+// Service worker: offline app shell + push notifications, kept on the latest deploy (swUpdate.ts).
+// Production web only: the native shell already bundles the app, and dev serves modules unbundled.
+if (import.meta.env.PROD && !isNative() && 'serviceWorker' in navigator) registerServiceWorker();
 
 /** Client-side navigation from outside React (deep links); App listens for popstate. */
 const navigate = (path: string) => {
