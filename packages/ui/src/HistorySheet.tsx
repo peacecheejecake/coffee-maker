@@ -15,7 +15,7 @@ export interface HistoryEntry {
   /** An entry shows under every filter it carries (a forgiveness motion is both a review and a waiver). */
   tags: HistoryTag[];
   text: string;
-  /** Where a proposal stands now; votes and withdrawals are folded into this instead of listed. */
+  /** Where a proposal stands now; votes are folded into this instead of listed. */
   status?: ProposalStatus;
 }
 
@@ -73,6 +73,20 @@ function describe(e: LedgerEvent, s: LedgerState, t: Translate): Omit<HistoryEnt
         tags: ['review', ...motionTags(m.motion)],
         text: t('feed.MotionProposed', { actor: name(e.actorId), title: motionTitle(t, s, m.motion) }),
         status: m.status,
+      };
+    }
+    // A withdrawal gets its own line (when and by whom); the proposal above it also wears the 철회 badge.
+    case 'WaiveWithdrawn': {
+      const p = s.proposals[e.proposalId];
+      if (!p || p.status !== 'withdrawn') return null;
+      return { tags: ['review', 'waive'], text: t('history.WaiveWithdrawn', { actor: name(e.actorId), player: name(p.debtorId) }) };
+    }
+    case 'MotionWithdrawn': {
+      const m = s.motions[e.motionId];
+      if (!m || m.status !== 'withdrawn') return null;
+      return {
+        tags: ['review', ...motionTags(m.motion)],
+        text: t('history.MotionWithdrawn', { actor: name(e.actorId), title: motionTitle(t, s, m.motion) }),
       };
     }
     case 'CupsRedeemed':

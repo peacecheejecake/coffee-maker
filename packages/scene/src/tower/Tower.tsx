@@ -1,6 +1,6 @@
-import { Text } from '@react-three/drei';
+import { RoundedBox, Text } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
-import { Suspense, useState } from 'react';
+import { Suspense } from 'react';
 import { PEDESTAL } from '../layout/dimensions';
 import type { PlacedTower } from '../layout/sceneLayout';
 import { PALETTE } from '../palette';
@@ -57,36 +57,26 @@ export function Tower({ placed, fontUrl, onSelect }: TowerProps) {
   );
 }
 
-const TAG = { fontSize: 0.14, padX: 0.07, padY: 0.035 } as const;
+/** Same width as the plaque below it, a small gap above it, and about as thick. */
+const TAG = { fontSize: 0.14, height: 0.21, gap: 0.04, depth: 0.07, radius: 0.035, opacity: 0.7 } as const;
 
-/** Caption above the plaque (e.g. "관전 중") on a translucent white pill sized to the rendered text. */
+/** Caption above the plaque (e.g. "관전 중") on a translucent rounded white block as wide as the name plaque. */
 function Tag({ text, fontUrl }: { text: string; fontUrl: string }) {
-  // Measured from troika's layout once the glyphs are ready; until then only the text shows.
-  const [width, setWidth] = useState(0);
-  const onSync = (mesh: { textRenderInfo?: { blockBounds: number[] } }) => {
-    const b = mesh.textRenderInfo?.blockBounds;
-    if (b) setWidth(b[2]! - b[0]!);
-  };
-  const height = TAG.fontSize + TAG.padY * 2;
-  const z = PLAQUE.size[2] / 2 + 0.005;
-
+  const [width] = PLAQUE.size;
   return (
-    <group position={[0, PLAQUE.size[1] / 2 + 0.11, 0]}>
-      {width > 0 && (
-        <mesh position={[0, 0, z]}>
-          <planeGeometry args={[width + TAG.padX * 2, height]} />
-          <meshBasicMaterial color={PALETTE.tagBackdrop} transparent opacity={0.6} depthWrite={false} />
-        </mesh>
-      )}
+    <group position={[0, PLAQUE.size[1] / 2 + TAG.gap + TAG.height / 2, 0]}>
+      <RoundedBox args={[width, TAG.height, TAG.depth]} radius={TAG.radius} smoothness={4}>
+        {/* Lit, so the rounded edges and sides read as thickness. */}
+        <meshStandardMaterial color={PALETTE.tagBackdrop} transparent opacity={TAG.opacity} depthWrite={false} />
+      </RoundedBox>
       <Text
         font={fontUrl}
         fontSize={TAG.fontSize}
-        maxWidth={1.2}
-        position={[0, 0, z + 0.004]}
+        maxWidth={width - TAG.radius * 2}
+        position={[0, 0, TAG.depth / 2 + 0.004]}
         color={PALETTE.spectator}
         anchorX="center"
         anchorY="middle"
-        onSync={onSync}
       >
         {text}
       </Text>

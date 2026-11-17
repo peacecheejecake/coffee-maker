@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { LedgerProvider } from '../src/context';
 import { HistorySheet } from '../src/HistorySheet';
-import { SettingsSheet } from '../src/SettingsSheet';
+import { AccountSheet, SettingsSheet } from '../src/SettingsSheet';
 
 afterEach(cleanup);
 
@@ -57,6 +57,31 @@ describe('history', () => {
     await user.click(screen.getByRole('button', { name: '전체' }));
     expect(items()).toHaveLength(all.length);
   });
+
+  it('shows a withdrawn review as its own line, under the same filters as the proposal', async () => {
+    const store = await makeStore();
+    const { dispatch, setMe } = store.getState();
+    const A = store.getState().me!;
+    // 민수 has used the app, so the waiver waits for their vote instead of passing at once.
+    await setMe(B);
+    await dispatch({ type: 'RecordArrival', playerId: A, workDate: '2026-10-23', arrivedAt: '09:30', allowDuplicate: false });
+    await setMe(A);
+    const late = Object.keys(store.getState().ledger.lates)[0]!;
+    await dispatch({ type: 'ProposeWaive', targetId: late as never, reason: '지하철 고장' });
+    const pid = Object.keys(store.getState().ledger.proposals)[0]!;
+    await dispatch({ type: 'WithdrawWaive', proposalId: pid as never });
+    const user = userEvent.setup();
+    render(
+      <LedgerProvider store={store}>
+        <HistorySheet open onOpenChange={() => {}} />
+      </LedgerProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: '탕감' }));
+    const [withdrawn, proposed] = items();
+    expect(withdrawn).toContain('지원님이 지원의 탕감 심의를 철회했습니다');
+    expect(proposed).toMatch(/탕감 심의를 발의했습니다.*철회/);
+  });
 });
 
 describe('player roster', () => {
@@ -83,5 +108,28 @@ describe('player roster', () => {
     expect(added).toBeTruthy();
     // A new member joins as a participant, above the spectator area.
     expect(within(spectators).queryByDisplayValue('하나')).toBeNull();
+  });
+});
+
+describe('nickname', () => {
+  it('lets a member rename themselves from the account sheet', async () => {
+    const store = await makeStore();
+    await store.getState().setMe(B);
+    const user = userEvent.setup();
+    render(
+      <LedgerProvider store={store}>
+        <AccountSheet open onOpenChange={() => {}} />
+      </LedgerProvider>,
+    );
+
+    const field = screen.getByRole('textbox', { name: '닉네임' });
+    expect((field as HTMLInputElement).value).toBe('민수');
+    const save = screen.getByRole('button', { name: '저장' });
+    expect(save.hasAttribute('disabled')).toBe(true);
+    await user.clear(field);
+    await user.type(field, '  민수짱 ');
+    await user.click(save);
+    expect(store.getState().ledger.players[B]?.name).toBe('민수짱');
+    expect(screen.getByRole('button', { name: '저장' }).hasAttribute('disabled')).toBe(true);
   });
 });
