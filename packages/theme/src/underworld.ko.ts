@@ -474,6 +474,8 @@ export const underworldKo = {
   'history.ArrivalOnTime': '{player}님이 {date} {at}에 제때 도착했습니다',
   'history.LateCorrected': '{actor}님이 {player}의 {date} 업보를 정정했습니다',
   'history.LateRetracted': '{actor}님이 {player}의 {date} 업보 청구를 철회했습니다',
+  'history.WaiveWithdrawn': '{actor}님이 {player}의 탕감 심의를 철회했습니다',
+  'history.MotionWithdrawn': '{actor}님이 발의를 철회했습니다: {title}',
   'history.RedemptionReverted': '{actor}님이 상환 기록을 되돌렸습니다',
   'history.HolidaySet': '{date} 휴무일 지정: {name}',
   'history.HolidayCleared': '{date} 휴무 해제',

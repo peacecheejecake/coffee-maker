@@ -57,6 +57,31 @@ describe('history', () => {
     await user.click(screen.getByRole('button', { name: '전체' }));
     expect(items()).toHaveLength(all.length);
   });
+
+  it('shows a withdrawn review as its own line, under the same filters as the proposal', async () => {
+    const store = await makeStore();
+    const { dispatch, setMe } = store.getState();
+    const A = store.getState().me!;
+    // 민수 has used the app, so the waiver waits for their vote instead of passing at once.
+    await setMe(B);
+    await dispatch({ type: 'RecordArrival', playerId: A, workDate: '2026-10-23', arrivedAt: '09:30', allowDuplicate: false });
+    await setMe(A);
+    const late = Object.keys(store.getState().ledger.lates)[0]!;
+    await dispatch({ type: 'ProposeWaive', targetId: late as never, reason: '지하철 고장' });
+    const pid = Object.keys(store.getState().ledger.proposals)[0]!;
+    await dispatch({ type: 'WithdrawWaive', proposalId: pid as never });
+    const user = userEvent.setup();
+    render(
+      <LedgerProvider store={store}>
+        <HistorySheet open onOpenChange={() => {}} />
+      </LedgerProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: '탕감' }));
+    const [withdrawn, proposed] = items();
+    expect(withdrawn).toContain('지원님이 지원의 탕감 심의를 철회했습니다');
+    expect(proposed).toMatch(/탕감 심의를 발의했습니다.*철회/);
+  });
 });
 
 describe('player roster', () => {

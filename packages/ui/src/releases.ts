@@ -9,6 +9,10 @@ export interface Release {
 
 export const RELEASES: Release[] = [
   {
+    date: '2026-11-17',
+    notes: ['이력에 심의 철회도 따로 남습니다: 누가 언제 철회했는지 볼 수 있습니다.'],
+  },
+  {
     date: '2026-11-16',
     notes: [
       '이력 메뉴: 출두·청구·심의·탕감·일정 변경 등을 한곳에서 보고, 분류를 여러 개 골라 걸러 봅니다.',

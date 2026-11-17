@@ -159,6 +159,8 @@ export const plainKo: Messages = {
   'history.CheckedIn': '{player}님이 {date} 출석했습니다',
   'history.LateCorrected': '{actor}님이 {player}의 {date} 지각 기록을 고쳤습니다',
   'history.LateRetracted': '{actor}님이 {player}의 {date} 지각 기록을 취소했습니다',
+  'history.WaiveWithdrawn': '{actor}님이 {player} 면제 투표를 취소했습니다',
+  'history.MotionWithdrawn': '{actor}님이 투표를 취소했습니다: {title}',
   'history.RulesAdopted': '{actor}님이 규칙을 확정했습니다',
   'history.Archived': '{player}님이 멤버에서 빠졌습니다',
   'history.Unarchived': '{player}님이 멤버로 돌아왔습니다',
