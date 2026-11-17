@@ -449,6 +449,8 @@ export const underworldKo = {
   'settings.spectators': '관전자',
   'settings.addPlayerSubmit': '추가',
   'settings.updates': '앱 업데이트 이력',
+  'settings.nickname': '닉네임',
+  'settings.nickname.saved': '이제부터 {name}(으)로 불립니다',
   'settings.noSpectators': '관전 중인 사람이 없습니다.',
   'history.open': '이력',
   'history.title': '저승 이력부',

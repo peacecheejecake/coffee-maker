@@ -50,12 +50,56 @@ export function AccountSheet({ open, onOpenChange }: { open: boolean; onOpenChan
     <Sheet open={open} onOpenChange={onOpenChange} title={t('account.title')}>
       {open && (
         <div className="cm-stack">
+          <NicknameSection />
           <AccountSection />
           <DeviceSection />
           <UpdatesSection />
         </div>
       )}
     </Sheet>
+  );
+}
+
+/** The name everyone sees on your tower. Anyone may rename themselves; the roster is for the owner. */
+function NicknameSection() {
+  const me = useLedger((s) => (s.me ? s.ledger.players[s.me] : undefined));
+  if (!me || me.archived) return null;
+  // Keyed so a rename from elsewhere (another device, the roster) resets the field.
+  return <NicknameForm key={me.name} player={me} />;
+}
+
+function NicknameForm({ player }: { player: Player }) {
+  const t = useT();
+  const run = useCommand();
+  const { toast } = useUi();
+  const [name, setName] = useState(player.name);
+  const trimmed = name.trim();
+  const dirty = trimmed !== player.name;
+  return (
+    <section className="cm-section" aria-labelledby="nickname-h">
+      <h3 id="nickname-h">{t('settings.nickname')}</h3>
+      <form
+        className="cm-row"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const d = await run({ type: 'UpdatePlayer', playerId: player.id, patch: { name: trimmed } });
+          if (d.ok) toast(t('settings.nickname.saved', { name: trimmed }));
+        }}
+      >
+        <ColorDot color={player.appearance.color} />
+        <input
+          className="cm-input"
+          required
+          maxLength={20}
+          aria-label={t('settings.nickname')}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <button type="submit" className="cm-button cm-button-primary" disabled={!dirty || !trimmed}>
+          {t('action.save')}
+        </button>
+      </form>
+    </section>
   );
 }
 
