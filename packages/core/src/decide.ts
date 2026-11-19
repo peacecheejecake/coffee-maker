@@ -22,6 +22,7 @@ import { validateRuleset, type Ruleset } from './ruleset';
 import {
   activePlayers,
   attendanceInForce,
+  canSetStartTime,
   checkInBlocker,
   currentRuleset,
   missedDays,
@@ -223,6 +224,9 @@ function updatePlayer(s: LedgerState, cmd: Cmd<'UpdatePlayer'>, actor: Player, m
   if (cmd.patch.archived !== undefined && !isOwner) return fail('NotPermitted', 'Only an owner can archive players');
   if (target.id !== actor.id && !isOwner) return fail('NotPermitted', 'Members can only edit themselves');
   if (cmd.patch.name !== undefined && cmd.patch.name.trim() === '') return fail('InvalidInput', 'Name is required');
+  if (cmd.patch.startTimeOverride !== undefined && (cmd.patch.startTimeOverride ?? undefined) !== target.startTimeOverride && !canSetStartTime(s, actor.id)) {
+    return fail('NotPermitted', 'Under adopted rules only the owner sets start times');
+  }
   const start = cmd.patch.startTimeOverride;
   if (start !== undefined && start !== null && !isHHmm(start)) {
     return fail('InvalidInput', 'startTimeOverride must be HH:mm');
@@ -557,6 +561,9 @@ function proposeMotion(s: LedgerState, cmd: Cmd<'ProposeMotion'>, ctx: DecideCon
       if (!attendanceInForce(s)) return fail('RulesNotAdopted', 'Confirm the first rules before proposing changes');
       const issues = validateRuleset(motion.ruleset);
       if (issues.length > 0) return fail('InvalidRuleset', 'Ruleset is invalid', { issues });
+      // One rules change at a time: two open drafts would each pass against rules the other replaces.
+      const pending = motionsOpen(s, ctx.now).find((m) => m.motion.kind === 'ruleset');
+      if (pending) return fail('ProposalAlreadyOpen', 'A rules change is already under review', { motionId: pending.id });
       break;
     }
     case 'adjust': {

@@ -167,6 +167,22 @@ export const distribute = <T>(cups: readonly T[], recipients: readonly PlayerId[
 // ── modes, attendance & motions ─────────────────────────────────────────────
 
 /** Attendance mode with the common rules confirmed: check-ins and missed days count from `startsOn`. */
+/**
+ * Check-ins judge against the player's own start time from this work date on. Earlier days keep the group
+ * time they were judged against when they happened, so replaying the log never rewrites settled records.
+ */
+export const PERSONAL_START_FROM: WorkDate = '2026-11-20';
+
+/** When `playerId` is due on `date`: their own start time if set (from PERSONAL_START_FROM), else the group's. */
+export function startTimeFor(s: LedgerState, rs: Ruleset, playerId: PlayerId, date: WorkDate): HHmm {
+  const own = date >= PERSONAL_START_FROM ? s.players[playerId]?.startTimeOverride : undefined;
+  return own ?? rs.defaultStartTime;
+}
+
+/** Under adopted attendance rules only the owner sets start times (anyone else could just move their own). */
+export const canSetStartTime = (s: LedgerState, actorId: PlayerId | null | undefined): boolean =>
+  !attendanceInForce(s) || (!!actorId && s.players[actorId]?.role === 'owner');
+
 export const attendanceInForce = (s: LedgerState): boolean => s.mode === 'attendance' && s.attendance.startsOn !== undefined;
 
 export const attendanceOn = (s: LedgerState, playerId: PlayerId, date: WorkDate): 'checkIn' | 'missed' | undefined =>

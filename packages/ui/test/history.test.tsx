@@ -133,3 +133,52 @@ describe('nickname', () => {
     expect(screen.getByRole('button', { name: '저장' }).hasAttribute('disabled')).toBe(true);
   });
 });
+
+describe('rules under review', () => {
+  it('locks the rules form on the proposed values until the vote ends', async () => {
+    const store = await makeStore('attendance');
+    const { dispatch, setMe } = store.getState();
+    const A = store.getState().me!;
+    // 민수 has used the app, so a rules change waits for their vote.
+    await setMe(B);
+    await dispatch({ type: 'UpdatePlayer', playerId: B, patch: { name: '민수' } });
+    await setMe(A);
+    await dispatch({ type: 'AdoptRules', ruleset: store.getState().ledger.rulesets.at(-1)!.ruleset });
+    const user = userEvent.setup();
+    render(
+      <LedgerProvider store={store}>
+        <SettingsSheet open onOpenChange={() => {}} />
+      </LedgerProvider>,
+    );
+
+    await user.click(screen.getByRole('button', { name: '유예 시간 (분) +' }));
+    await user.click(screen.getByRole('button', { name: '규정 변경 발의' }));
+    expect(screen.getByText(/지원님이 발의한 규정 변경안을 심의 중입니다/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: '심의 중' }).hasAttribute('disabled')).toBe(true);
+    // Inside the disabled fieldset: off, though without an attribute of its own.
+    expect(screen.getByRole('button', { name: '유예 시간 (분) +' }).matches(':disabled')).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: '발의 철회' }));
+    expect(screen.queryByText(/규정 변경안을 심의 중입니다/)).toBeNull();
+    // Back to the rules in force: nothing to propose until something changes.
+    expect(screen.getByRole('button', { name: '규정 변경 발의' }).hasAttribute('disabled')).toBe(true);
+  });
+});
+
+describe('personal start time', () => {
+  it('is the owner\'s to set once the rules are in force', async () => {
+    const store = await makeStore('attendance');
+    const { dispatch, setMe } = store.getState();
+    await dispatch({ type: 'AdoptRules', ruleset: store.getState().ledger.rulesets.at(-1)!.ruleset });
+    await setMe(B);
+    render(
+      <LedgerProvider store={store}>
+        <SettingsSheet open onOpenChange={() => {}} />
+      </LedgerProvider>,
+    );
+    const mine = screen.getByDisplayValue('민수').closest('li')!;
+    expect(within(mine).getByLabelText('개인 출근 시각').matches(':disabled')).toBe(true);
+    // The name is still theirs to change.
+    expect(within(mine).getByDisplayValue('민수').matches(':disabled')).toBe(false);
+  });
+});
