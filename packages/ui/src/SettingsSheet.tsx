@@ -5,11 +5,15 @@ import {
   isPolygonArea,
   isSoloMember,
   isSpectator,
+  motionsOpen,
   judgeLateness,
   RULESET_LIMITS,
+  canSetStartTime,
+  startTimeFor,
   toMinutes,
   validateRuleset,
   type CupTier,
+  type MotionRecord,
   type Player,
   type Ruleset,
   type Workplace,
@@ -35,7 +39,7 @@ export function SettingsSheet({ open, onOpenChange }: { open: boolean; onOpenCha
         <div className="cm-stack">
           <InviteSection />
           <GroupSection />
-          <RulesEditor />
+          <RulesSection />
           <PlayersEditor />
         </div>
       )}
@@ -136,14 +140,25 @@ export function lateSchedule(rs: Ruleset): { at: string; cups: number }[] {
   return steps;
 }
 
-function RulesEditor() {
+/** The rules form, started over whenever a rules change opens or closes so it never shows a stale draft. */
+function RulesSection() {
+  const ledger = useLedger((s) => s.ledger);
+  const now = useLedger((s) => s.nowIso)();
+  const pending = motionsOpen(ledger, now).find((m) => m.motion.kind === 'ruleset');
+  return <RulesEditor key={pending?.id ?? 'none'} pending={pending} />;
+}
+
+function RulesEditor({ pending }: { pending: MotionRecord | undefined }) {
   const t = useT();
   const { toast } = useUi();
   const run = useCommand();
   const ledger = useLedger((s) => s.ledger);
   const me = useLedger((s) => s.me);
   const saved = currentRuleset(ledger);
-  const [draft, setDraft] = useState<Ruleset>(saved);
+  // Under review, the form shows the proposed rules, read-only, until the vote ends.
+  const proposed = pending?.motion.kind === 'ruleset' ? pending.motion.ruleset : undefined;
+  const [edit, setDraft] = useState<Ruleset>(saved);
+  const draft = proposed ?? edit;
   const feedback = useMotionFeedback();
   const api = useStoreApi();
   const isOwner = !!me && ledger.players[me]?.role === 'owner';
@@ -153,7 +168,7 @@ function RulesEditor() {
   const attendance = ledger.mode === 'attendance';
   const { startsOn } = ledger.attendance;
   const stage = !attendance ? 'owner' : !startsOn ? 'adopt' : 'propose';
-  const canEdit = stage === 'propose' || isOwner;
+  const canEdit = (stage === 'propose' || isOwner) && !proposed;
   // Alone, a rule change passes on the spot, so it reads as a plain save.
   const solo = isSoloMember(ledger, me);
   const [confirmAdopt, setConfirmAdopt] = useState(false);
@@ -203,6 +218,16 @@ function RulesEditor() {
       {stage === 'owner' && !isOwner && <p className="cm-muted">{t('settings.ownerOnly')}</p>}
       {stage === 'adopt' && <p className="cm-muted">{isOwner ? t(solo ? 'rules.adoptBodySolo' : 'rules.adoptBody') : t('rules.waitingOwner')}</p>}
       {stage === 'propose' && startsOn && <p className="cm-muted">{t(solo ? 'rules.inForceSolo' : 'rules.inForce', { date: formatWorkDate(startsOn) })}</p>}
+      {pending && (
+        <div className="cm-notice" role="status">
+          <span>{t('rules.underReview', { actor: ledger.players[pending.proposerId]?.name ?? '?' })}</span>
+          {pending.proposerId === me && (
+            <button type="button" className="cm-button cm-button-ghost" onClick={() => void run({ type: 'WithdrawMotion', motionId: pending.id })}>
+              {t('motion.withdraw')}
+            </button>
+          )}
+        </div>
+      )}
       <fieldset disabled={!canEdit} className="cm-form">
         <div className="cm-grid2">
         <Field label={t('settings.startTime')}>
@@ -304,10 +329,16 @@ function RulesEditor() {
         <button
           type="button"
           className="cm-button cm-button-primary"
-          disabled={(stage !== 'adopt' && !dirty) || issues.length > 0}
+          disabled={!!proposed || (stage !== 'adopt' && !dirty) || issues.length > 0}
           onClick={() => (stage === 'adopt' ? setConfirmAdopt(true) : void save())}
         >
-          {stage === 'adopt' ? t('rules.adopt') : stage === 'propose' && !solo ? t('rules.propose') : t('action.save')}
+          {proposed
+            ? t('rules.reviewing')
+            : stage === 'adopt'
+              ? t('rules.adopt')
+              : stage === 'propose' && !solo
+                ? t('rules.propose')
+                : t('action.save')}
         </button>
         {confirmAdopt && (
           <ConfirmBox
@@ -421,7 +452,10 @@ function PlayersEditor() {
   const spectators = players.filter((p) => isSpectator(ledger, p.id));
   const isOwner = !!me && ledger.players[me]?.role === 'owner';
   const [adding, setAdding] = useState(false);
-  const row = (p: Player) => <PlayerRow key={p.id} player={p} canEdit={isOwner || p.id === me} canArchive={isOwner && p.id !== me} />;
+  const canStart = canSetStartTime(ledger, me);
+  const row = (p: Player) => (
+    <PlayerRow key={p.id} player={p} canEdit={isOwner || p.id === me} canEditStart={canStart} canArchive={isOwner && p.id !== me} />
+  );
 
   // Every row and the header share one column template (.cm-player-row), so fields line up.
   return (
@@ -519,7 +553,17 @@ function ColorPicker({ color, onChange, disabled }: { color: string; onChange: (
   );
 }
 
-function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: boolean; canArchive: boolean }) {
+function PlayerRow({
+  player,
+  canEdit,
+  canEditStart,
+  canArchive,
+}: {
+  player: Player;
+  canEdit: boolean;
+  canEditStart: boolean;
+  canArchive: boolean;
+}) {
   const t = useT();
   const run = useCommand();
   const [name, setName] = useState(player.name);
@@ -549,8 +593,8 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
           type="time"
           className="cm-input"
           aria-label={t('settings.playerStart')}
-          title={t('settings.playerStart')}
-          disabled={!canEdit}
+          title={canEditStart ? t('settings.playerStart') : t('settings.playerStartOwnerOnly')}
+          disabled={!canEdit || !canEditStart}
           value={start}
           onChange={(e) => setStart(e.target.value)}
         />
@@ -581,7 +625,11 @@ function PlayerRow({ player, canEdit, canArchive }: { player: Player; canEdit: b
               void run({
                 type: 'UpdatePlayer',
                 playerId: player.id,
-                patch: { name, appearance: { ...player.appearance, color }, startTimeOverride: start || null },
+                patch: {
+                  name,
+                  appearance: { ...player.appearance, color },
+                  ...(canEditStart && { startTimeOverride: start || null }),
+                },
               })
             }
           >
@@ -828,12 +876,15 @@ function ReminderField() {
   const t = useT();
   const { platform, toast } = useUi();
   const ledger = useLedger((s) => s.ledger);
+  const me = useLedger((s) => s.me);
+  const today = useLedger((s) => s.wallNow().workDate);
   const [on, setOn] = useState(false);
   useEffect(() => {
     void platform.reminder?.enabled().then(setOn);
   }, [platform]);
   if (!platform.reminder) return null;
-  const start = toMinutes(currentRuleset(ledger).defaultStartTime) - 10;
+  const rs = currentRuleset(ledger);
+  const start = toMinutes(me ? startTimeFor(ledger, rs, me, today) : rs.defaultStartTime) - 10;
   const at = `${String(Math.floor(start / 60)).padStart(2, '0')}:${String(start % 60).padStart(2, '0')}`;
   return (
     <Field label={t('settings.reminder', { at })}>

@@ -7,7 +7,7 @@ import type { Player } from './player';
 import { motionIssue, motionVoters } from './motionRules';
 import { RETRACT_WINDOW_MINUTES } from './policy';
 import { isValidRuleset, maxCups } from './ruleset';
-import { currentRuleset, rulesetAt } from './selectors';
+import { attendanceInForce, currentRuleset, PERSONAL_START_FROM, rulesetAt, startTimeFor } from './selectors';
 import {
   attendanceKey,
   emptyState,
@@ -128,6 +128,9 @@ function onPlayerUpdated(s: LedgerState, e: EventOf<'PlayerUpdated'>): LedgerSta
   // Same authority as decide: members edit only themselves, only the owner archives.
   const owner = actor.role === 'owner';
   if ((player.id !== actor.id || e.patch.archived !== undefined) && !owner) return s;
+  // Under adopted attendance rules a start time is the owner's call, not something to move for yourself.
+  const startLocked =
+    !owner && e.patch.startTimeOverride !== undefined && attendanceInForce(s) && localDate(s, effectiveAt(e)) >= PERSONAL_START_FROM;
   // Only the patchable fields; the role moves solely through OwnerTransferred.
   const { name, appearance, archived, startTimeOverride } = e.patch;
   const next: Player = {
@@ -136,7 +139,9 @@ function onPlayerUpdated(s: LedgerState, e: EventOf<'PlayerUpdated'>): LedgerSta
     ...(appearance !== undefined && { appearance }),
     ...(typeof archived === 'boolean' && { archived }),
   };
-  if (startTimeOverride === null) delete next.startTimeOverride;
+  if (startLocked) {
+    // Keep the rest of the edit (a rename) and drop only the start time.
+  } else if (startTimeOverride === null) delete next.startTimeOverride;
   else if (startTimeOverride !== undefined) next.startTimeOverride = startTimeOverride;
   const updated = { ...s, players: { ...s.players, [e.playerId]: next } };
   // Coming back from the archive counts like joining again: the days away are never charged.
@@ -495,7 +500,7 @@ function onCheckedIn(s: LedgerState, e: EventOf<'CheckedIn'>): LedgerState {
   const next = markDay(s, e.actorId, e.workDate, 'checkIn');
   if (!isWorkdayFor(next, rs, e.actorId, e.workDate)) return next;
 
-  const scheduledStart = rs.defaultStartTime;
+  const scheduledStart = startTimeFor(next, rs, e.actorId, e.workDate);
   const judgement = judgeLateness(arrived.hhmm, scheduledStart, rs.graceMinutes);
   const cups = computeCups(judgement, rs.cupRule);
   if (cups === 0) {
@@ -534,7 +539,7 @@ function onAttendanceMissed(s: LedgerState, e: EventOf<'AttendanceMissed'>): Led
     id: e.id,
     playerId: e.playerId,
     workDate: e.workDate,
-    scheduledStart: rs.defaultStartTime,
+    scheduledStart: startTimeFor(s, rs, e.playerId, e.workDate),
     arrivedAt: '',
     minutesLate: 0,
     origin: 'missed',

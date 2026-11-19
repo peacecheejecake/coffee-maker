@@ -78,6 +78,35 @@ describe('attendance mode', () => {
     expect(l.state.onTimes.map((o) => o.playerId)).toEqual([A]);
   });
 
+  it('a personal start time counts at check-in, from PERSONAL_START_FROM on', () => {
+    const l = attendance();
+    l.run(A, { type: 'UpdatePlayer', playerId: B, patch: { startTimeOverride: '10:00' } });
+    // Before the cutover the group time still applies, so settled days replay as they were.
+    at(l, '2026-10-26', '09:30');
+    l.run(B, { type: 'CheckIn' });
+    expect(l.cups(B)).toBe(1);
+    at(l, '2026-11-23', '09:30'); // Monday, after the cutover
+    l.run(B, { type: 'CheckIn' });
+    expect(l.cups(B)).toBe(1);
+    expect(l.state.onTimes.at(-1)).toMatchObject({ playerId: B, workDate: '2026-11-23' });
+    at(l, '2026-11-24', '10:20');
+    const [late] = l.run(B, { type: 'CheckIn' });
+    expect(l.state.lates[late!.id]).toMatchObject({ scheduledStart: '10:00', minutesLate: 20 });
+  });
+
+  it('under adopted rules only the owner sets start times', () => {
+    const l = attendance();
+    at(l, '2026-11-20', '08:00');
+    expect(l.fail(B, { type: 'UpdatePlayer', playerId: B, patch: { startTimeOverride: '11:00' } }).code).toBe('NotPermitted');
+    // Renaming still works, and an unchanged start time in the same patch is fine.
+    l.run(B, { type: 'UpdatePlayer', playerId: B, patch: { name: '민수', startTimeOverride: null } });
+    expect(l.state.players[B]?.name).toBe('민수');
+    // A forged event that skips decide changes nothing either.
+    const [e] = l.decideOnly(A, { type: 'UpdatePlayer', playerId: B, patch: { startTimeOverride: '11:00' } });
+    l.apply({ ...e!, actorId: B } as LedgerEvent);
+    expect(l.state.players[B]?.startTimeOverride).toBeUndefined();
+  });
+
   it('server time decides the day: a check-in that lands on another date is ignored', () => {
     const l = attendance();
     at(l, '2026-10-26', '09:00');
@@ -175,6 +204,15 @@ describe('attendance mode', () => {
     l.run(C, { type: 'VoteMotion', motionId: p!.id, vote: 'reject' });
     expect(l.state.motions[p!.id]?.status).toBe('rejected');
     expect(l.state.rulesets.at(-1)?.ruleset.defaultStartTime).toBe('09:00');
+  });
+
+  it('one rules change is under review at a time', () => {
+    const l = attendance();
+    const [p] = l.run(B, { type: 'ProposeMotion', motion: { kind: 'ruleset', ruleset: { ...DEFAULT_RULESET, graceMinutes: 7 } } });
+    const second = { type: 'ProposeMotion', motion: { kind: 'ruleset', ruleset: { ...DEFAULT_RULESET, graceMinutes: 9 } } } as const;
+    expect(l.fail(C, second)).toMatchObject({ code: 'ProposalAlreadyOpen', detail: { motionId: p!.id } });
+    l.run(B, { type: 'WithdrawMotion', motionId: p!.id });
+    l.run(C, second);
   });
 
   it("someone else's cup needs n−2 approvals; one's own needs n−1", () => {

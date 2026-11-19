@@ -200,6 +200,7 @@ export const underworldKo = {
   'settings.playerName': '이름',
   'settings.playerColor': '색',
   'settings.playerStart': '개인 출근 시각',
+  'settings.playerStartOwnerOnly': '규정 시행 중에는 담당자(방장)만 개인 출근 시각을 정할 수 있습니다',
   'settings.archive': '명단에서 내리기',
   'settings.device': '이 기기',
   'settings.me': '이 기기를 쓰는 사람',
@@ -289,6 +290,8 @@ export const underworldKo = {
   'rules.inForce': '{date}부터 출두 판정 중 · 변경은 발의로',
   'rules.propose': '규정 변경 발의',
   'rules.proposed': '규정 변경을 발의했습니다',
+  'rules.underReview': '{actor}님이 발의한 규정 변경안을 심의 중입니다. 아래는 변경안 내용이며, 결론이 나면 다시 고칠 수 있습니다.',
+  'rules.reviewing': '심의 중',
   'rules.adoptBodySolo': '확정하면 내일부터 출두를 판정합니다. 혼자인 동안은 투표 없이 바로 바꿀 수 있습니다.',
   'rules.inForceSolo': '{date}부터 출두 판정 중 · 혼자라서 바로 반영',
 

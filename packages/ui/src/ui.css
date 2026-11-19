@@ -166,6 +166,7 @@
   font: inherit;
   font-size: 15px;
   min-height: 44px;
+  white-space: nowrap;
   padding: 0 16px;
   border-radius: 12px;
   border: 1px solid var(--cm-border);
@@ -219,13 +220,37 @@
 .cm-input {
   font: inherit;
   font-size: 16px; /* prevents iOS zoom on focus */
-  min-height: 44px;
+  /* A fixed height, not min-height: iOS Safari sizes time, date and select controls by their own rules
+     (and an empty time input collapses) unless the native look is turned off and the height is pinned. */
+  box-sizing: border-box;
+  height: 44px;
+  -webkit-appearance: none;
+  appearance: none;
   padding: 0 12px;
   border-radius: 10px;
   border: 1px solid var(--cm-border);
   background: var(--cm-surface);
   color: var(--cm-text);
   min-width: 0;
+}
+
+.cm-input[type='time'],
+.cm-input[type='date'] {
+  text-align: left;
+}
+
+/* iOS centers the value and gives it its own line box; line it up with text inputs. */
+.cm-input::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+
+/* The native arrow goes with appearance: none, so draw one. */
+select.cm-input {
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23a9a3c4' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
 }
 
 .cm-input-time {
@@ -720,6 +745,19 @@ input[type='color'] {
   font-weight: 500;
   color: var(--cm-text-dim);
   margin-top: 2px;
+}
+
+.cm-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgb(181 156 255 / 0.12);
+  border: 1px solid rgb(181 156 255 / 0.35);
+  font-size: 14px;
 }
 
 .cm-preview-basis {
