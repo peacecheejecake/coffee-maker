@@ -1,4 +1,5 @@
 export * from './calendar';
+export * from './checkInQr';
 export * from './credit';
 export * from './decide';
 export * from './errors';

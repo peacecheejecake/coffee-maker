@@ -33,6 +33,7 @@ const rulesetSummary = (t: Translate, rs: Ruleset): string =>
           isPolygonArea(rs.workplace) ? t('workplace.polygonShort', { count: rs.workplace.points.length }) : `${rs.workplace.radiusMeters}m`
         }`
       : '📍–',
+    ...(rs.checkInQr ? ['🔳QR'] : []),
   ].join(' · ');
 
 export function motionTitle(t: Translate, s: LedgerState, m: Motion): string {
