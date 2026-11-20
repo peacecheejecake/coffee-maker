@@ -11,6 +11,7 @@ import {
   type StampQuality,
   type Vote,
 } from './events';
+import { matchesCheckInQr } from './checkInQr';
 import { checkPlace, isGeoFix, type GeoFix } from './geo';
 import { asEventId, asPlayerId, type EventId, type GroupId, type PlayerId } from './ids';
 import { computeCups, judgeLateness } from './judge';
@@ -85,8 +86,11 @@ export type Command =
   | { type: 'ChangeMode'; mode: GroupMode }
   | { type: 'TransferOwner'; to: PlayerId }
   | { type: 'AdoptRules'; ruleset: Ruleset }
-  /** `position` is required when the rules set a workplace; it is checked, never stored. */
-  | { type: 'CheckIn'; position?: GeoFix }
+  /**
+   * `position` is required when the rules set a workplace, `qrCode` (the scanned code) when they ask for the QR;
+   * both are checked, never stored.
+   */
+  | { type: 'CheckIn'; position?: GeoFix; qrCode?: string }
   /** Records every work day that ended without a check-in (any member may do this). */
   | { type: 'SettleAttendance' }
   | { type: 'SetHoliday'; date: WorkDate; name: string; off: boolean }
@@ -501,7 +505,11 @@ function checkIn(s: LedgerState, cmd: Cmd<'CheckIn'>, ctx: DecideContext, make: 
       break;
   }
   // The position is checked here and then dropped: it is the device's word, and the server keeps no trail of it.
-  const { workplace } = rulesetAt(s, ctx.today);
+  const { workplace, checkInQr } = rulesetAt(s, ctx.today);
+  if (checkInQr) {
+    if (cmd.qrCode === undefined) return fail('QrRequired', 'Check-ins need the check-in QR');
+    if (!matchesCheckInQr(checkInQr, cmd.qrCode)) return fail('QrMismatch', 'Not this group\'s check-in QR');
+  }
   if (workplace) {
     if (!isGeoFix(cmd.position)) return fail('LocationRequired', 'Check-ins need a position inside the workplace');
     const place = checkPlace(workplace, cmd.position);

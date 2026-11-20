@@ -144,13 +144,19 @@ export interface LedgerActions {
   workplaceToday(): Workplace | undefined;
   /** Reads the position once and compares it with today's workplace. Null when there is nothing to compare. */
   locate(): Promise<PlaceStatus | null>;
-  /** Checks the device user in, with a fresh position when the rules set a workplace. */
-  checkIn(): Promise<Decision>;
+  /** Whether today's rules ask for the check-in QR (attendance mode only). */
+  qrRequiredToday(): boolean;
+  /**
+   * Checks the device user in, with a fresh position when the rules set a workplace and `qrCode` (the scanned
+   * code) when they ask for the QR.
+   */
+  checkIn(qrCode?: string): Promise<Decision>;
   /** Turning it on asks for location permission first; resolves to the resulting setting. */
   setAutoCheckIn(on: boolean): Promise<boolean>;
   /**
    * Foreground auto check-in: when enabled, due today and inside the workplace, checks in. Null when nothing was
-   * attempted or the device is not inside (silently: the UI calls this on every app open).
+   * attempted or the device is not inside (silently: the UI calls this on every app open). Never runs when the rules
+   * ask for the QR: that needs someone to scan it.
    */
   tryAutoCheckIn(): Promise<Decision | null>;
 
@@ -531,9 +537,15 @@ export function createLedgerStore({
 
       locate: async () => (await readPlace())?.place ?? null,
 
-      async checkIn() {
-        if (!get().workplaceToday()) return get().dispatch({ type: 'CheckIn' });
-        return checkInAt(await readPlace());
+      qrRequiredToday() {
+        const { ledger } = get();
+        return ledger.mode === 'attendance' && !!rulesetAt(ledger, get().wallNow().workDate).checkInQr;
+      },
+
+      async checkIn(qrCode) {
+        const qr = qrCode === undefined ? {} : { qrCode };
+        if (!get().workplaceToday()) return get().dispatch({ type: 'CheckIn', ...qr });
+        return checkInAt(await readPlace(), qr);
       },
 
       async setAutoCheckIn(on) {
@@ -551,7 +563,8 @@ export function createLedgerStore({
         if (!autoCheckIn || !groupId || !me || autoBusy) return null;
         // Like settling: a stale device might not know about a check-in from this account's other device yet.
         if (sync !== 'local' && sync !== 'synced') return null;
-        if (!get().workplaceToday() || checkInBlocker(ledger, me, get().wallNow().workDate) !== null) return null;
+        if (!get().workplaceToday() || get().qrRequiredToday()) return null;
+        if (checkInBlocker(ledger, me, get().wallNow().workDate) !== null) return null;
         autoBusy = true;
         try {
           const read = await readPlace();
@@ -676,12 +689,12 @@ export function createLedgerStore({
     return { place, fix: r.ok ? r.fix : null };
   }
 
-  function checkInAt(read: { place: PlaceStatus; fix: GeoFix | null } | null): Promise<Decision> {
+  function checkInAt(read: { place: PlaceStatus; fix: GeoFix | null } | null, qr: { qrCode?: string } = {}): Promise<Decision> {
     if (!read?.fix) {
       const reason = read?.place.kind === 'failed' ? read.place.reason : 'unsupported';
       return Promise.resolve(fail('LocationRequired', `No position: ${reason}`, { reason }));
     }
-    return store.getState().dispatch({ type: 'CheckIn', position: read.fix });
+    return store.getState().dispatch({ type: 'CheckIn', position: read.fix, ...qr });
   }
 
   /** Participating needs membership; viewers become members here. */

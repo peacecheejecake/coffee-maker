@@ -1,9 +1,10 @@
 import type { PlaceStatus } from '@coffee/app';
-import { checkInBlocker, type CheckInBlocker, type Decision } from '@coffee/core';
+import { CHECKIN_QR_PARAM, checkInBlocker, parseCheckInQr, type CheckInBlocker, type Decision } from '@coffee/core';
 import type { Translate } from '@coffee/theme';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLedger, useStoreApi, useT, useUi } from './context';
 import { formatDistance, formatWorkDate } from './format';
+import { QrScannerSheet } from './QrScanner';
 
 const SETTLE_EVERY_MS = 60_000;
 /** How often an open app re-reads the position while a check-in is still due (GPS costs battery). */
@@ -60,6 +61,50 @@ export function useWorkplaceWatch() {
   }, [api, due, auto, key, synced, announce]);
 }
 
+/** Codes the decide step reports on the button itself rather than in a toast. */
+const SHOWN_ON_BUTTON = ['LocationRequired', 'OutsideWorkplace', 'LocationUncertain'];
+
+/** Takes the check-in code out of the address (a QR opened with the phone's own camera), once per page load. */
+function takeLinkCode(): string | null {
+  if (typeof location === 'undefined') return null;
+  const params = new URLSearchParams(location.search);
+  const raw = params.get(CHECKIN_QR_PARAM);
+  if (raw === null) return null;
+  params.delete(CHECKIN_QR_PARAM);
+  const rest = params.toString();
+  history.replaceState(history.state, '', `${location.pathname}${rest ? `?${rest}` : ''}${location.hash}`);
+  return parseCheckInQr(raw);
+}
+
+/**
+ * A check-in QR scanned with the phone's camera opens the app with the code in the address: check in with it as
+ * soon as the ledger is in sync (so a check-in from another device is known), or say why not.
+ */
+export function useCheckInLink() {
+  const t = useT();
+  const { toast } = useUi();
+  const api = useStoreApi();
+  const me = useLedger((s) => s.me);
+  const synced = useLedger((s) => s.sync === 'local' || s.sync === 'synced');
+  const code = useRef<string | null | undefined>(undefined);
+  if (code.current === undefined) code.current = takeLinkCode();
+  const announce = useCheckInToast(false);
+
+  useEffect(() => {
+    const scanned = code.current;
+    if (!scanned || !me || !synced) return;
+    code.current = null;
+    const st = api.getState();
+    const blocker = checkInBlocker(st.ledger, me, st.wallNow().workDate);
+    if (blocker === 'notStarted' || blocker === 'wrongMode') return;
+    if (blocker) return toast(t(BLOCKER_LABEL[blocker]));
+    void st.checkIn(scanned).then((d) => {
+      if (d.ok) return announce(d);
+      if (!SHOWN_ON_BUTTON.includes(d.error.code)) toast(t(`error.${d.error.code}`), 'error');
+    });
+  }, [api, me, synced, announce, toast, t]);
+}
+
 /** Toast for a check-in that went through: on time, or how late and what it cost. */
 function useCheckInToast(auto: boolean) {
   const t = useT();
@@ -112,7 +157,9 @@ export function CheckInButton() {
   const place = useLedger((s) => s.place);
   const today = useLedger((s) => s.wallNow)().workDate;
   const workplace = useLedger((s) => s.workplaceToday)();
+  const qr = useLedger((s) => s.qrRequiredToday)();
   const announce = useCheckInToast(false);
+  const [scanning, setScanning] = useState(false);
   if (!me) return null;
 
   const blocker = checkInBlocker(ledger, me, today);
@@ -122,11 +169,12 @@ export function CheckInButton() {
   // Only when nothing else stands in the way does it matter where one is.
   const placeBlock = blocker === null && workplace ? placeLabel(t, place, api.supportsLocation) : null;
 
-  async function checkIn() {
-    const d = await api.getState().checkIn();
+  async function checkIn(qrCode?: string) {
+    setScanning(false);
+    const d = await api.getState().checkIn(qrCode);
     if (d.ok) return announce(d);
     // Location refusals already show on the button; anything else (e.g. a check-in from another device) is news.
-    if (!['LocationRequired', 'OutsideWorkplace', 'LocationUncertain'].includes(d.error.code)) toast(t(`error.${d.error.code}`), 'error');
+    if (!SHOWN_ON_BUTTON.includes(d.error.code)) toast(t(`error.${d.error.code}`), 'error');
   }
 
   const canRelocate = placeBlock !== null && api.supportsLocation && place?.kind !== 'locating';
@@ -136,9 +184,9 @@ export function CheckInButton() {
         type="button"
         className="cm-button cm-button-primary cm-button-large"
         disabled={disabledLabel !== null || placeBlock !== null}
-        onClick={() => void checkIn()}
+        onClick={() => (qr ? setScanning(true) : void checkIn())}
       >
-        🕯 {disabledLabel ?? placeBlock ?? t('checkin.action')}
+        {qr ? '🔳' : '🕯'} {disabledLabel ?? placeBlock ?? t(qr ? 'checkin.scan' : 'checkin.action')}
       </button>
       {canRelocate && (
         <button
@@ -151,6 +199,7 @@ export function CheckInButton() {
           📍
         </button>
       )}
+      {qr && <QrScannerSheet open={scanning} onOpenChange={setScanning} onCode={(code) => void checkIn(code)} />}
     </>
   );
 }

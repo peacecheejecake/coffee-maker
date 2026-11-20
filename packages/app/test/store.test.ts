@@ -1,4 +1,4 @@
-import { asPlayerId, outstanding, type PlayerId } from '@coffee/core';
+import { asPlayerId, checkInQrFor, outstanding, type PlayerId } from '@coffee/core';
 import { describe, expect, it } from 'vitest';
 import { createFakeGeolocation, createLedgerStore, createMemoryStores, UNDO_WINDOW_MS, ulid, wallTime } from '../src';
 
@@ -208,7 +208,7 @@ describe('workplace check-in', () => {
     const ruleset = { ...store.getState().ledger.rulesets.at(-1)!.ruleset, workplace: OFFICE };
     await store.getState().dispatch({ type: 'AdoptRules', ruleset });
     now += 3 * 86_400_000;
-    return { store, geo, stores };
+    return { store, geo, stores, advance: (ms: number) => void (now += ms) };
   }
 
   it('checks in only from inside, and keeps the position off the event', async () => {
@@ -277,5 +277,27 @@ describe('workplace check-in', () => {
     expect(s.store.supportsLocation).toBe(false);
     expect(await s.store.getState().locate()).toBeNull();
     expect((await s.store.getState().checkIn()).ok).toBe(true);
+  });
+
+  it('with the QR in the rules: the scanned code goes along, and nothing checks in by itself', async () => {
+    const { store, geo, stores } = await withOffice();
+    const code = 'ABCDEFGHJKLMNPQRSTUV';
+    const ruleset = { ...store.getState().ledger.rulesets.at(-1)!.ruleset, checkInQr: checkInQrFor(code) };
+    expect(store.getState().qrRequiredToday()).toBe(false);
+    // Solo, so the change passes on the spot.
+    await store.getState().dispatch({ type: 'ProposeMotion', motion: { kind: 'ruleset', ruleset } });
+    expect(store.getState().qrRequiredToday()).toBe(true);
+
+    geo.next = inside;
+    expect(await store.getState().setAutoCheckIn(true)).toBe(true);
+    const calls = geo.calls;
+    expect(await store.getState().tryAutoCheckIn()).toBeNull();
+    expect(geo.calls).toBe(calls);
+
+    let d = await store.getState().checkIn();
+    expect(!d.ok && d.error.code).toBe('QrRequired');
+    d = await store.getState().checkIn(code);
+    expect(d.ok).toBe(true);
+    expect(JSON.stringify(stores.events.all)).not.toContain(code);
   });
 });

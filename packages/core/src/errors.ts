@@ -27,7 +27,11 @@ export type DomainErrorCode =
   | 'LocationRequired'
   | 'OutsideWorkplace'
   /** The position is too vague to tell (see `checkPlace`). */
-  | 'LocationUncertain';
+  | 'LocationUncertain'
+  /** The rules ask for the check-in QR and this check-in came without it. */
+  | 'QrRequired'
+  /** A code was scanned, but not the one in the rules (an old print, or another group's). */
+  | 'QrMismatch';
 
 export interface DomainError {
   code: DomainErrorCode;

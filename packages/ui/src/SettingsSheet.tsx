@@ -1,5 +1,6 @@
 import {
   activePlayers,
+  checkInQrFor,
   computeCups,
   currentRuleset,
   isPolygonArea,
@@ -7,11 +8,14 @@ import {
   isSpectator,
   motionsOpen,
   judgeLateness,
+  matchesCheckInQr,
+  newCheckInCode,
   RULESET_LIMITS,
   canSetStartTime,
   startTimeFor,
   toMinutes,
   validateRuleset,
+  type CheckInQr,
   type CupTier,
   type MotionRecord,
   type Player,
@@ -22,6 +26,7 @@ import {
 import type { Tone } from '@coffee/theme';
 import { useEffect, useMemo, useState } from 'react';
 import { useCommand, useLedger, useStoreApi, useT, useUi } from './context';
+import { CheckInQrSheet } from './CheckInQrSheet';
 import { formatWorkDate } from './format';
 import { GroupSection } from './GroupSettings';
 import { SpectateForm, useMotionFeedback } from './Motions';
@@ -145,10 +150,20 @@ function RulesSection() {
   const ledger = useLedger((s) => s.ledger);
   const now = useLedger((s) => s.nowIso)();
   const pending = motionsOpen(ledger, now).find((m) => m.motion.kind === 'ruleset');
-  return <RulesEditor key={pending?.id ?? 'none'} pending={pending} />;
+  // A QR issued here outlives the form (proposing restarts it) so it can still be saved, until the sheet closes.
+  const [issued, setIssued] = useState<string | null>(null);
+  return <RulesEditor key={pending?.id ?? 'none'} pending={pending} issued={issued} onIssue={setIssued} />;
 }
 
-function RulesEditor({ pending }: { pending: MotionRecord | undefined }) {
+function RulesEditor({
+  pending,
+  issued,
+  onIssue,
+}: {
+  pending: MotionRecord | undefined;
+  issued: string | null;
+  onIssue: (code: string) => void;
+}) {
   const t = useT();
   const { toast } = useUi();
   const run = useCommand();
@@ -176,6 +191,17 @@ function RulesEditor({ pending }: { pending: MotionRecord | undefined }) {
   const setWorkplace = (w: Workplace | undefined) => {
     const { workplace: _, ...rest } = draft;
     setDraft(w ? { ...rest, workplace: w } : rest);
+  };
+  const [showingQr, setShowingQr] = useState(false);
+  const setCheckInQr = (qr: CheckInQr | undefined) => {
+    const { checkInQr: _, ...rest } = draft;
+    setDraft(qr ? { ...rest, checkInQr: qr } : rest);
+  };
+  const issueQr = () => {
+    const code = newCheckInCode((b) => crypto.getRandomValues(b));
+    onIssue(code);
+    setCheckInQr(checkInQrFor(code));
+    setShowingQr(true);
   };
 
   const schedule = (rs: Ruleset) => {
@@ -301,6 +327,16 @@ function RulesEditor({ pending }: { pending: MotionRecord | undefined }) {
             onEdit={() => setPickingPlace(true)}
           />
         )}
+        {attendance && (
+          <CheckInQrField
+            value={draft.checkInQr}
+            changed={draft.checkInQr?.codeHash !== saved.checkInQr?.codeHash}
+            canShow={!!issued && !!draft.checkInQr && matchesCheckInQr(draft.checkInQr, issued)}
+            onIssue={issueQr}
+            onShow={() => setShowingQr(true)}
+            onRemove={() => setCheckInQr(undefined)}
+          />
+        )}
         <p className="cm-muted">{t('settings.timezone', { tz: draft.timezone })}</p>
         {dirty && (
           <div className="cm-preview is-late" role="status">
@@ -350,7 +386,54 @@ function RulesEditor({ pending }: { pending: MotionRecord | undefined }) {
         )}
       </fieldset>
       <WorkplaceSheet open={pickingPlace} onOpenChange={setPickingPlace} value={draft.workplace} onApply={setWorkplace} />
+      {issued && <CheckInQrSheet code={issued} open={showingQr} onOpenChange={setShowingQr} />}
     </section>
+  );
+}
+
+/**
+ * Attendance mode: whether check-ins need the printed QR. Issuing makes a new code; only its hash goes into the
+ * draft, so the image can be seen only while this form keeps the code (see CheckInQrSheet).
+ */
+function CheckInQrField({
+  value,
+  changed,
+  canShow,
+  onIssue,
+  onShow,
+  onRemove,
+}: {
+  value: CheckInQr | undefined;
+  changed: boolean;
+  canShow: boolean;
+  onIssue: () => void;
+  onShow: () => void;
+  onRemove: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="cm-field" role="group" aria-labelledby="checkin-qr-h">
+      <span className="cm-field-label" id="checkin-qr-h">
+        {t('checkinQr.title')}
+      </span>
+      <div className="cm-row cm-wrap">
+        <span>🔳 {value ? t('checkinQr.on') : t('checkinQr.none')}</span>
+        <button type="button" className="cm-button" onClick={onIssue}>
+          {value ? t('checkinQr.reissue') : t('checkinQr.issue')}
+        </button>
+        {canShow && (
+          <button type="button" className="cm-button" onClick={onShow}>
+            {t('checkinQr.show')}
+          </button>
+        )}
+        {value && (
+          <button type="button" className="cm-button cm-button-ghost" onClick={onRemove}>
+            {t('checkinQr.remove')}
+          </button>
+        )}
+      </div>
+      <span className="cm-field-hint">{changed ? t('checkinQr.pending') : t('checkinQr.hint')}</span>
+    </div>
   );
 }
 
@@ -811,7 +894,7 @@ function NotificationsField() {
   );
 }
 
-/** Per device: check in by itself when the app is opened inside the workplace. Shown once the rules set one. */
+/** Per device: check in by itself when the app is opened inside the workplace. Shown once the rules set one (and no QR). */
 function AutoCheckInField() {
   const t = useT();
   const { toast } = useUi();
@@ -819,8 +902,10 @@ function AutoCheckInField() {
   const on = useLedger((s) => s.autoCheckIn);
   const me = useLedger((s) => s.me);
   const workplace = useLedger((s) => s.workplaceToday)();
+  // A QR needs someone holding the phone up to it: nothing to do automatically.
+  const qr = useLedger((s) => s.qrRequiredToday)();
   const [busy, setBusy] = useState(false);
-  if (!me || !workplace || !api.supportsLocation) return null;
+  if (!me || !workplace || qr || !api.supportsLocation) return null;
   return (
     <Field label={t('settings.autoCheckIn')} hint={t('settings.autoCheckIn.hint')}>
       <Segmented<'on' | 'off'>

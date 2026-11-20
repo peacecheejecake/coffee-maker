@@ -1,3 +1,4 @@
+import { isCheckInQr, type CheckInQr } from './checkInQr';
 import { workplaceIssues, type Workplace } from './geo';
 import { isHHmm, isTimeZone, type HHmm } from './time';
 
@@ -25,6 +26,8 @@ export interface Ruleset {
   publicHolidays?: 'KR' | 'none';
   /** Attendance mode: check-ins only count from inside this area. Absent (all older rulesets): anywhere. */
   workplace?: Workplace;
+  /** Attendance mode: check-ins need the printed QR scanned. Absent: no QR. */
+  checkInQr?: CheckInQr;
 }
 
 export const DEFAULT_RULESET: Ruleset = {
@@ -65,6 +68,7 @@ export function validateRuleset(rs: Ruleset): RulesetIssue[] {
   if (rs.workplace !== undefined) {
     for (const [path, message] of workplaceIssues(rs.workplace)) add(path ? `workplace.${path}` : 'workplace', message);
   }
+  if (rs.checkInQr !== undefined && !isCheckInQr(rs.checkInQr)) add('checkInQr', 'must be a SHA-256 hash');
   if (!inRange(rs.waivePolicy.ttlHours, RULESET_LIMITS.waiveTtlHours)) add('waivePolicy.ttlHours', 'out of range');
 
   const rule = rs.cupRule;
